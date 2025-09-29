@@ -54,7 +54,7 @@ namespace CircuitSimulator
                     {
                         if (source is Gate gateSource)
                         {
-                            gate.Inputs.Add(gateSource.Output);
+                            gate.Inputs.Add(gateSource.Outputs[0]);
                         }
                         else if (source is string inputName)
                         {
@@ -69,10 +69,31 @@ namespace CircuitSimulator
                 }
             }
 
-            // Then compute all gates
+            // Compute CircuitGates first
             foreach (var gate in Gates)
             {
-                gate.Compute();
+                if (gate is CircuitGate)
+                {
+                    gate.Compute();
+                }
+            }
+
+            // Then compute SubcircuitOutputGates
+            foreach (var gate in Gates)
+            {
+                if (gate is SubcircuitOutputGate)
+                {
+                    gate.Compute();
+                }
+            }
+
+            // Then compute other gates
+            foreach (var gate in Gates)
+            {
+                if (!(gate is CircuitGate) && !(gate is SubcircuitOutputGate))
+                {
+                    gate.Compute();
+                }
             }
         }
 

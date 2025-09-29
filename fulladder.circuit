@@ -1,0 +1,19 @@
+circuit FullAdder {
+    inputs { a, b, cin }
+    outputs { sum, cout }
+    gates {
+        ha1 = Circuit("halfadder.circuit")
+        ha2 = Circuit("halfadder.circuit")
+        or1 = OR()
+    }
+    connections {
+        a -> ha1.in[0]
+        b -> ha1.in[1]
+        ha1.out[0] -> ha2.in[0]  // sum from first half adder
+        cin -> ha2.in[1]
+        ha1.out[1] -> or1.in[0]  // carry from first half adder
+        ha2.out[1] -> or1.in[1]  // carry from second half adder
+        ha2.out[0] -> sum        // sum from second half adder
+        or1.out -> cout          // combined carry
+    }
+}

@@ -1,0 +1,12 @@
+circuit MultiBitTest {
+    inputs { value[2] }
+    outputs { result }
+    gates {
+        or1 = OR()
+    }
+    connections {
+        value[0] -> or1.in[0]
+        value[1] -> or1.in[1]
+        or1.out -> result
+    }
+}

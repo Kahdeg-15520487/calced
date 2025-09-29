@@ -104,6 +104,10 @@ circuit TestCircuit {
 
             var visualization = circuit.Visualize();
 
+            // Debug
+            Console.WriteLine("Visualization:");
+            Console.WriteLine(visualization);
+
             Assert.Contains("Gates:", visualization);
             Assert.Contains("not1: NOT", visualization);
             Assert.Contains("Connections:", visualization);

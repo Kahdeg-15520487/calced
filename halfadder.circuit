@@ -1,0 +1,16 @@
+circuit HalfAdder {
+    inputs { a, b }
+    outputs { sum, carry }
+    gates {
+        xor1 = XOR()
+        and1 = AND()
+    }
+    connections {
+        a -> xor1.in[0]
+        b -> xor1.in[1]
+        a -> and1.in[0]
+        b -> and1.in[1]
+        xor1.out -> sum
+        and1.out -> carry
+    }
+}

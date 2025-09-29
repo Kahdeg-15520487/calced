@@ -7,7 +7,9 @@ namespace CircuitSimulator
     public abstract class Gate
     {
         public List<bool> Inputs { get; set; } = new List<bool>();
-        public bool Output { get; protected set; }
+        public List<bool> Outputs { get; protected set; } = new List<bool>();
+
+        public bool Output => Outputs.Count > 0 ? Outputs[0] : false;
 
         public abstract void Compute();
     }
@@ -16,7 +18,7 @@ namespace CircuitSimulator
     {
         public override void Compute()
         {
-            Output = Inputs.All(i => i);
+            Outputs = new List<bool> { Inputs.All(i => i) };
         }
     }
 
@@ -24,7 +26,7 @@ namespace CircuitSimulator
     {
         public override void Compute()
         {
-            Output = Inputs.Any(i => i);
+            Outputs = new List<bool> { Inputs.Any(i => i) };
         }
     }
 
@@ -33,7 +35,7 @@ namespace CircuitSimulator
         public override void Compute()
         {
             if (Inputs.Count != 1) throw new InvalidOperationException("NOT gate must have exactly one input.");
-            Output = !Inputs[0];
+            Outputs = new List<bool> { !Inputs[0] };
         }
     }
 
@@ -41,7 +43,7 @@ namespace CircuitSimulator
     {
         public override void Compute()
         {
-            Output = !Inputs.All(i => i);
+            Outputs = new List<bool> { !Inputs.All(i => i) };
         }
     }
 
@@ -49,7 +51,7 @@ namespace CircuitSimulator
     {
         public override void Compute()
         {
-            Output = !Inputs.Any(i => i);
+            Outputs = new List<bool> { !Inputs.Any(i => i) };
         }
     }
 
@@ -57,7 +59,7 @@ namespace CircuitSimulator
     {
         public override void Compute()
         {
-            Output = Inputs.Count(i => i) % 2 == 1;
+            Outputs = new List<bool> { Inputs.Count(i => i) % 2 == 1 };
         }
     }
 
@@ -65,7 +67,7 @@ namespace CircuitSimulator
     {
         public override void Compute()
         {
-            Output = Inputs.Count(i => i) % 2 == 0;
+            Outputs = new List<bool> { Inputs.Count(i => i) % 2 == 0 };
         }
     }
 
@@ -79,7 +81,60 @@ namespace CircuitSimulator
             {
                 _q = Inputs[0]; // D
             }
-            Output = _q;
+            Outputs = new List<bool> { _q };
+        }
+    }
+
+    public class CircuitGate : Gate
+    {
+        private Circuit SubCircuit { get; }
+
+        public CircuitGate(Circuit subCircuit)
+        {
+            SubCircuit = subCircuit;
+            // Initialize outputs list with the same size as subcircuit outputs
+            Outputs = new List<bool>(new bool[subCircuit.ExternalOutputs.Count]);
+        }
+
+        public override void Compute()
+        {
+            // Map this gate's inputs to subcircuit's external inputs
+            var inputNames = SubCircuit.ExternalInputs.Keys.ToList();
+            for (int i = 0; i < Inputs.Count && i < inputNames.Count; i++)
+            {
+                SubCircuit.ExternalInputs[inputNames[i]] = Inputs[i];
+            }
+
+            // Simulate the subcircuit
+            SubCircuit.Tick();
+
+            // Map subcircuit's external outputs to this gate's outputs
+            var outputNames = SubCircuit.ExternalOutputs.Keys.ToList();
+            Outputs.Clear();
+            foreach (var name in outputNames)
+            {
+                var gate = SubCircuit.ExternalOutputs[name];
+                Outputs.Add(gate?.Output ?? false);
+            }
+        }
+    }
+
+    public class SubcircuitOutputGate : Gate
+    {
+        private CircuitGate ParentCircuitGate { get; }
+        private int OutputIndex { get; }
+
+        public SubcircuitOutputGate(CircuitGate parentCircuitGate, int outputIndex)
+        {
+            ParentCircuitGate = parentCircuitGate;
+            OutputIndex = outputIndex;
+            Outputs = new List<bool> { false }; // Initialize with one output
+        }
+
+        public override void Compute()
+        {
+            // This gate's output is the specific output from the parent subcircuit
+            Outputs = new List<bool> { OutputIndex < ParentCircuitGate.Outputs.Count ? ParentCircuitGate.Outputs[OutputIndex] : false };
         }
     }
 }

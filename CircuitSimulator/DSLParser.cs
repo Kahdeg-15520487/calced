@@ -31,18 +31,62 @@ namespace CircuitSimulator
             [typeof(DFlipFlop)] = "DFF"
         };
 
-        public static Circuit Parse(string dslText)
+        public static Circuit Parse(string dslText, string? circuitName = null)
         {
-            var circuit = new Circuit();
-            var lines = dslText.Split('\n').Select(l => l.Trim()).Where(l => !string.IsNullOrEmpty(l) && !l.StartsWith("#")).ToArray();
+            var circuits = ParseCircuitsFromText(dslText);
+            
+            // Return specific circuit if name provided, otherwise return the last one parsed
+            if (circuitName != null && circuits.ContainsKey(circuitName))
+            {
+                return circuits[circuitName];
+            }
+            return circuits.Values.LastOrDefault() ?? new Circuit();
+        }
+
+        private static Dictionary<string, Circuit> ParseCircuitsFromText(string dslText)
+        {
+            var circuits = new Dictionary<string, Circuit>();
+            var parseOrder = new List<string>(); // Track order of circuit definitions
+            var lines = dslText.Split('\n')
+                .Select(l => l.Split("//")[0].Trim()) // Remove comments
+                .Where(l => !string.IsNullOrEmpty(l))
+                .ToArray();
 
             int i = 0;
             while (i < lines.Length)
             {
-                if (lines[i].StartsWith("circuit "))
+                if (lines[i].StartsWith("import "))
+                {
+                    // Parse import statement: import "filename.circuit"
+                    var match = Regex.Match(lines[i], @"import ""([^""]+)""");
+                    if (match.Success)
+                    {
+                        var importFile = match.Groups[1].Value;
+                        try
+                        {
+                            var importedDsl = File.ReadAllText(importFile);
+                            var importedCircuits = ParseCircuitsFromText(importedDsl);
+                            foreach (var kvp in importedCircuits)
+                            {
+                                circuits[kvp.Key] = kvp.Value;
+                                // Don't add imported circuits to parse order
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            // For now, just continue if import fails
+                            Console.WriteLine($"Warning: Failed to import {importFile}: {ex.Message}");
+                        }
+                    }
+                    i++;
+                }
+                else if (lines[i].StartsWith("circuit "))
                 {
                     // Parse circuit name
-                    var circuitName = Regex.Match(lines[i], @"circuit (\w+)").Groups[1].Value;
+                    var currentCircuitName = Regex.Match(lines[i], @"circuit (\w+)").Groups[1].Value;
+                    var circuit = new Circuit();
+                    circuits[currentCircuitName] = circuit;
+                    parseOrder.Add(currentCircuitName); // Track local circuit definition order
                     i++; // skip {
 
                     // Parse blocks
@@ -83,7 +127,7 @@ namespace CircuitSimulator
                         }
                         else if (lines[i] == "gates {")
                         {
-                            i = ParseGates(circuit, lines, i + 1);
+                            i = ParseGates(circuit, lines, i + 1, circuits);
                         }
                         else if (lines[i] == "connections {")
                         {
@@ -95,10 +139,9 @@ namespace CircuitSimulator
                         }
                     }
                 }
-                i++;
             }
 
-            return circuit;
+            return circuits;
         }
 
         private static int ParseInputs(Circuit circuit, string[] lines, int start)
@@ -146,17 +189,37 @@ namespace CircuitSimulator
             return i + 1;
         }
 
-        private static int ParseGates(Circuit circuit, string[] lines, int start)
+        private static int ParseGates(Circuit circuit, string[] lines, int start, Dictionary<string, Circuit> circuits)
         {
             int i = start;
             while (i < lines.Length && lines[i] != "}")
             {
-                var match = Regex.Match(lines[i], @"(\w+)\s*=\s*(\w+)\(\)");
+                var match = Regex.Match(lines[i], @"(\w+)\s*=\s*(\w+)\(([^)]*)\)");
                 if (match.Success)
                 {
                     var name = match.Groups[1].Value;
                     var type = match.Groups[2].Value;
-                    if (GateFactory.TryGetValue(type, out var factory))
+                    var args = match.Groups[3].Value.Trim();
+                    if (type == "Circuit")
+                    {
+                        var circuitRef = args.Trim('"');
+                        
+                        // First try to find circuit in the same file
+                        if (circuits.ContainsKey(circuitRef))
+                        {
+                            var subCircuit = circuits[circuitRef];
+                            var gate = new CircuitGate(subCircuit);
+                            circuit.AddGate(name, gate);
+                        }
+                        else
+                        {
+                            // Fall back to loading from file
+                            var subCircuit = DSLParser.Parse(File.ReadAllText(circuitRef));
+                            var gate = new CircuitGate(subCircuit);
+                            circuit.AddGate(name, gate);
+                        }
+                    }
+                    else if (GateFactory.TryGetValue(type, out var factory))
                     {
                         var gate = factory();
                         circuit.AddGate(name, gate);
@@ -176,10 +239,6 @@ namespace CircuitSimulator
                 if (inputMatch.Success)
                 {
                     var source = inputMatch.Groups[1].Value.Trim();
-                    if (source.EndsWith(".out"))
-                    {
-                        source = source.Substring(0, source.Length - 4);
-                    }
                     var target = inputMatch.Groups[2].Value.Trim();
                     var index = int.Parse(inputMatch.Groups[3].Value);
 
@@ -191,6 +250,24 @@ namespace CircuitSimulator
                     else if (circuit.ExternalInputs.ContainsKey(source))
                     {
                         sourceObj = source;
+                    }
+                    // Handle subcircuit outputs: subcircuit.out[index]
+                    else if (source.Contains(".out["))
+                    {
+                        var parts = source.Split(new[] { ".out[" }, StringSplitOptions.None);
+                        if (parts.Length == 2 && parts[1].EndsWith("]"))
+                        {
+                            var subcircuitName = parts[0];
+                            var outputIndex = int.Parse(parts[1].TrimEnd(']'));
+                            if (circuit.NamedGates.TryGetValue(subcircuitName, out var subcircuitGate) && subcircuitGate is CircuitGate circuitGate)
+                            {
+                                // Create a SubcircuitOutputGate for this specific output
+                                var outputGate = new SubcircuitOutputGate(circuitGate, outputIndex);
+                                var outputGateName = $"{subcircuitName}_out_{outputIndex}";
+                                circuit.AddGate(outputGateName, outputGate);
+                                sourceObj = outputGate;
+                            }
+                        }
                     }
 
                     if (circuit.NamedGates.TryGetValue(target, out var targetGate) && sourceObj != null)
@@ -204,15 +281,40 @@ namespace CircuitSimulator
                     if (outputMatch.Success)
                     {
                         var source = outputMatch.Groups[1].Value.Trim();
+                        var target = outputMatch.Groups[2].Value.Trim();
+
+                        // Handle .out suffix for regular gates
                         if (source.EndsWith(".out"))
                         {
                             source = source.Substring(0, source.Length - 4);
                         }
-                        var target = outputMatch.Groups[2].Value.Trim();
+
+                        // Handle subcircuit outputs: subcircuit.out[index]
+                        int outputIndex = 0;
+                        if (source.Contains(".out["))
+                        {
+                            var parts = source.Split(new[] { ".out[" }, StringSplitOptions.None);
+                            if (parts.Length == 2 && parts[1].EndsWith("]"))
+                            {
+                                source = parts[0];
+                                outputIndex = int.Parse(parts[1].TrimEnd(']'));
+                            }
+                        }
 
                         if (circuit.NamedGates.TryGetValue(source, out var sourceGate) && circuit.ExternalOutputs.ContainsKey(target))
                         {
-                            circuit.ExternalOutputs[target] = sourceGate;
+                            // For subcircuits, we need to create a wrapper that extracts the specific output
+                            if (sourceGate is CircuitGate circuitGate && outputIndex < circuitGate.Outputs.Count)
+                            {
+                                // Create a simple gate that outputs the specific index from the subcircuit
+                                var outputGate = new SubcircuitOutputGate(circuitGate, outputIndex);
+                                circuit.AddGate($"{source}_out_{outputIndex}", outputGate);
+                                circuit.ExternalOutputs[target] = outputGate;
+                            }
+                            else
+                            {
+                                circuit.ExternalOutputs[target] = sourceGate;
+                            }
                         }
                     }
                 }
