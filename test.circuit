@@ -1,0 +1,12 @@
+circuit TestCircuit {
+    inputs { a, b }
+    outputs { out1 }
+    gates {
+        and1 = AND()
+    }
+    connections {
+        a -> and1.in[0]
+        b -> and1.in[1]
+        and1.out -> out1
+    }
+}
