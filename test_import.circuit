@@ -1,0 +1,21 @@
+import "imported_halfadder.circuit"
+
+circuit FullAdder {
+    inputs { a, b, cin }
+    outputs { sum, cout }
+    gates {
+        ha1 = Circuit("HalfAdder")
+        ha2 = Circuit("HalfAdder")
+        or1 = OR()
+    }
+    connections {
+        a -> ha1.in[0]
+        b -> ha1.in[1]
+        ha1.out[0] -> ha2.in[0]
+        cin -> ha2.in[1]
+        ha1.out[1] -> or1.in[0]
+        ha2.out[1] -> or1.in[1]
+        ha2.out[0] -> sum
+        or1.out -> cout
+    }
+}
