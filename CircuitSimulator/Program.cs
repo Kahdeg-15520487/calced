@@ -78,7 +78,8 @@ namespace CircuitSimulator
             }
 
             var dsl = File.ReadAllText(dslFile);
-            var circuit = DSLParser.Parse(dsl);
+            var basePath = Path.GetDirectoryName(Path.GetFullPath(dslFile)) ?? ".";
+            var circuit = DSLParser.Parse(dsl, basePath);
 
             // Parse input values
             for (int i = 1; i < args.Length; i++)
@@ -109,9 +110,16 @@ namespace CircuitSimulator
                             try
                             {
                                 var bits = ParseMultiBitValue(valueStr);
-                                SetMultiBitInput(circuit, inputName, bits);
+                                if (bits.Length == 1 && circuit.ExternalInputs.ContainsKey(inputName))
+                                {
+                                    circuit.ExternalInputs[inputName] = bits[0];
+                                }
+                                else
+                                {
+                                    SetMultiBitInput(circuit, inputName, bits);
+                                }
                             }
-                            catch (Exception ex)
+                            catch (ArgumentException ex)
                             {
                                 Console.WriteLine($"Invalid value for {inputName}: {valueStr} ({ex.Message})");
                             }

@@ -32,9 +32,9 @@ namespace CircuitSimulator
             [typeof(DFlipFlop)] = "DFF"
         };
 
-        public static Circuit Parse(string dslText, string? circuitName = null)
+        public static Circuit Parse(string dslText, string basePath, string? circuitName = null)
         {
-            var circuits = ParseCircuitsFromText(dslText);
+            var circuits = ParseCircuitsFromText(dslText, basePath);
             
             // Return specific circuit if name provided, otherwise return the last one parsed
             if (circuitName != null && circuits.ContainsKey(circuitName))
@@ -44,7 +44,7 @@ namespace CircuitSimulator
             return circuits.Values.LastOrDefault() ?? new Circuit();
         }
 
-        private static Dictionary<string, Circuit> ParseCircuitsFromText(string dslText)
+        private static Dictionary<string, Circuit> ParseCircuitsFromText(string dslText, string basePath)
         {
             var circuits = new Dictionary<string, Circuit>();
             var parseOrder = new List<string>(); // Track order of circuit definitions
@@ -65,8 +65,9 @@ namespace CircuitSimulator
                         var importFile = match.Groups[1].Value;
                         try
                         {
-                            var importedDsl = File.ReadAllText(importFile);
-                            var importedCircuits = ParseCircuitsFromText(importedDsl);
+                            var importPath = Path.Combine(basePath, importFile);
+                            var importedDsl = File.ReadAllText(importPath);
+                            var importedCircuits = ParseCircuitsFromText(importedDsl, basePath);
                             foreach (var kvp in importedCircuits)
                             {
                                 circuits[kvp.Key] = kvp.Value;
@@ -128,7 +129,7 @@ namespace CircuitSimulator
                         }
                         else if (lines[i] == "gates {")
                         {
-                            i = ParseGates(circuit, lines, i + 1, circuits);
+                            i = ParseGates(circuit, lines, i + 1, circuits, basePath);
                         }
                         else if (lines[i] == "connections {")
                         {
@@ -196,7 +197,7 @@ namespace CircuitSimulator
             return i + 1;
         }
 
-        private static int ParseGates(Circuit circuit, string[] lines, int start, Dictionary<string, Circuit> circuits)
+        private static int ParseGates(Circuit circuit, string[] lines, int start, Dictionary<string, Circuit> circuits, string basePath)
         {
             int i = start;
             while (i < lines.Length && lines[i] != "}")
@@ -221,7 +222,8 @@ namespace CircuitSimulator
                         else
                         {
                             // Fall back to loading from file
-                            var subCircuit = DSLParser.Parse(File.ReadAllText(circuitRef));
+                            var subCircuitPath = Path.Combine(basePath, circuitRef + ".circuit");
+                            var subCircuit = DSLParser.Parse(File.ReadAllText(subCircuitPath), basePath);
                             var gate = new CircuitGate(subCircuit);
                             circuit.AddGate(name, gate);
                         }

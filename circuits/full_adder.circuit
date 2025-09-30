@@ -1,4 +1,4 @@
-import "base.circuit"
+import "half_adder.circuit"
 
 circuit FullAdder {
     inputs { a, b, cin }
