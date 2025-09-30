@@ -1,9 +1,0 @@
-{
-  "profiles": {
-    "CircuitSimulator": {
-      "commandName": "Project",
-      "commandLineArgs": "multibit.circuit --value=b10",
-      "workingDirectory": "J:\\workspace2\\c#\\calced"
-    }
-  }
-}

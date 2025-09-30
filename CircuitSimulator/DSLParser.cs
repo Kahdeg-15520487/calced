@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 
@@ -138,6 +139,12 @@ namespace CircuitSimulator
                             i++;
                         }
                     }
+                    i++; // skip }
+                }
+                else
+                {
+                    // Handle unexpected lines
+                    i++;
                 }
             }
 
