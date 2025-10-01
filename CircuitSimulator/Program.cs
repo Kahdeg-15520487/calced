@@ -79,7 +79,7 @@ namespace CircuitSimulator
 
             var dsl = File.ReadAllText(dslFile);
             var basePath = Path.GetDirectoryName(Path.GetFullPath(dslFile)) ?? ".";
-            var circuit = DSLParser.Parse(dsl, basePath);
+            var circuit = DSLParser.Parse(dsl, basePath, useNewParser: true);
 
             // Parse input values
             for (int i = 1; i < args.Length; i++)

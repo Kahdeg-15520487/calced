@@ -55,7 +55,7 @@ namespace CircuitSimulator
 
         internal static readonly Dictionary<string, Dictionary<string, bool[]>> LookupTables = new Dictionary<string, Dictionary<string, bool[]>>();
 
-        private static Gate CreateLookupTableGate(string tableName)
+        internal static Gate CreateLookupTableGate(string tableName)
         {
             if (!LookupTables.TryGetValue(tableName, out var table))
             {
@@ -76,16 +76,33 @@ namespace CircuitSimulator
             [typeof(DFlipFlop)] = "DFF"
         };
 
-        public static Circuit Parse(string dslText, string basePath, string? circuitName = null)
+        public static Circuit Parse(string dslText, string basePath, string? circuitName = null, bool useNewParser = false)
         {
-            var circuits = ParseCircuitsFromText(dslText, basePath);
-            
-            // Return specific circuit if name provided, otherwise return the last one parsed
-            if (circuitName != null && circuits.ContainsKey(circuitName))
+            if (useNewParser)
             {
-                return circuits[circuitName];
+                var lexer = new Lexer(dslText);
+                var tokens = lexer.Tokenize().ToList();
+                var parser = new Parser(tokens, basePath);
+                var circuits = parser.ParseCircuits();
+
+                // Return specific circuit if name provided, otherwise return the last one parsed
+                if (circuitName != null && circuits.ContainsKey(circuitName))
+                {
+                    return circuits[circuitName];
+                }
+                return circuits.Values.LastOrDefault() ?? new Circuit();
             }
-            return circuits.Values.LastOrDefault() ?? new Circuit();
+            else
+            {
+                var circuits = ParseCircuitsFromText(dslText, basePath);
+
+                // Return specific circuit if name provided, otherwise return the last one parsed
+                if (circuitName != null && circuits.ContainsKey(circuitName))
+                {
+                    return circuits[circuitName];
+                }
+                return circuits.Values.LastOrDefault() ?? new Circuit();
+            }
         }
 
         private static Dictionary<string, Circuit> ParseCircuitsFromText(string dslText, string basePath)

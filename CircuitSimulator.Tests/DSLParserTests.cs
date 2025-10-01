@@ -117,5 +117,32 @@ circuit TestCircuit {
             Assert.Contains("External Outputs:", visualization);
             Assert.Contains("out1: not1", visualization);
         }
+
+        [Fact]
+        public void Parse_WithNewParser_SimpleCircuit_CreatesCorrectCircuit()
+        {
+            var dsl = @"
+circuit TestCircuit {
+    inputs { a, b }
+    outputs { out1 }
+    gates {
+        and1 = AND()
+    }
+    connections {
+        a -> and1.in[0]
+        b -> and1.in[1]
+        and1.out -> out1
+    }
+}
+";
+            var circuit = DSLParser.Parse(dsl, ".", useNewParser: true);
+
+            Assert.Equal("TestCircuit", circuit.Name);
+            Assert.Single(circuit.Gates);
+            Assert.True(circuit.NamedGates.ContainsKey("and1"));
+            Assert.True(circuit.ExternalInputs.ContainsKey("a"));
+            Assert.True(circuit.ExternalInputs.ContainsKey("b"));
+            Assert.True(circuit.ExternalOutputs.ContainsKey("out1"));
+        }
     }
 }
