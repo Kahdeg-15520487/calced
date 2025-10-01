@@ -1,0 +1,26 @@
+circuit MultiBitLookupTableTest {
+    inputs { a, b, op }
+    outputs { result0, result1 }
+    lookup_tables {
+        alu_table = {
+            000 -> 00
+            001 -> 01
+            010 -> 10
+            011 -> 11
+            100 -> 10  // a + b = 2 (10 in binary)
+            101 -> 11  // a + b + 1 = 3 (11 in binary)
+            110 -> 00  // a AND b = 0
+            111 -> 01  // a OR b = 1
+        }
+    }
+    gates {
+        alu = LookupTable("alu_table")
+    }
+    connections {
+        a -> alu.in[0]
+        b -> alu.in[1]
+        op -> alu.in[2]
+        alu.out[0] -> result0
+        alu.out[1] -> result1
+    }
+}

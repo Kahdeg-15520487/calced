@@ -1,0 +1,29 @@
+circuit LookupTableTest {
+    inputs { a, b }
+    outputs { result }
+    lookup_tables {
+        xor_table = {
+            00 -> 0
+            01 -> 1
+            10 -> 1
+            11 -> 0
+        }
+        nand_table = {
+            00 -> 1
+            01 -> 1
+            10 -> 1
+            11 -> 0
+        }
+    }
+    gates {
+        custom_xor = LookupTable("xor_table")
+        custom_nand = LookupTable("nand_table")
+    }
+    connections {
+        a -> custom_xor.in[0]
+        b -> custom_xor.in[1]
+        a -> custom_nand.in[0]
+        b -> custom_nand.in[1]
+        custom_xor.out -> result
+    }
+}

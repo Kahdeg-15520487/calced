@@ -78,10 +78,19 @@ namespace CircuitSimulator
                 }
             }
 
-            // Then compute SubcircuitOutputGates
+            // Then compute LookupTableGates
             foreach (var gate in Gates)
             {
-                if (gate is SubcircuitOutputGate)
+                if (gate is LookupTableGate)
+                {
+                    gate.Compute();
+                }
+            }
+
+            // Then compute SubcircuitOutputGates and LookupTableOutputGates
+            foreach (var gate in Gates)
+            {
+                if (gate is SubcircuitOutputGate || gate is LookupTableOutputGate)
                 {
                     gate.Compute();
                 }
@@ -90,7 +99,7 @@ namespace CircuitSimulator
             // Then compute other gates
             foreach (var gate in Gates)
             {
-                if (!(gate is CircuitGate) && !(gate is SubcircuitOutputGate))
+                if (!(gate is CircuitGate) && !(gate is LookupTableGate) && !(gate is SubcircuitOutputGate) && !(gate is LookupTableOutputGate))
                 {
                     gate.Compute();
                 }

@@ -53,6 +53,17 @@ namespace CircuitSimulator
             ["DFF"] = () => new DFlipFlop()
         };
 
+        internal static readonly Dictionary<string, Dictionary<string, bool[]>> LookupTables = new Dictionary<string, Dictionary<string, bool[]>>();
+
+        private static Gate CreateLookupTableGate(string tableName)
+        {
+            if (!LookupTables.TryGetValue(tableName, out var table))
+            {
+                throw new DSLInvalidGateException(tableName, $"Lookup table '{tableName}' not found");
+            }
+            return new LookupTableGate(table);
+        }
+
         internal static readonly Dictionary<Type, string> TypeToName = new Dictionary<Type, string>
         {
             [typeof(AndGate)] = "AND",
@@ -180,6 +191,10 @@ namespace CircuitSimulator
                         {
                             i = ParseGates(circuit, lines, i + 1, circuits, basePath);
                         }
+                        else if (lines[i] == "lookup_tables {")
+                        {
+                            i = ParseLookupTables(lines, i + 1);
+                        }
                         else if (lines[i] == "connections {")
                         {
                             i = ParseConnections(circuit, lines, i + 1);
@@ -270,6 +285,12 @@ namespace CircuitSimulator
                         var gate = new CircuitGate(subCircuit);
                         circuit.AddGate(name, gate);
                     }
+                    else if (type == "LookupTable")
+                    {
+                        var tableName = args.Trim('"');
+                        var gate = CreateLookupTableGate(tableName);
+                        circuit.AddGate(name, gate);
+                    }
                     else if (GateFactory.TryGetValue(type, out var factory))
                     {
                         var gate = factory();
@@ -326,7 +347,7 @@ namespace CircuitSimulator
                         var parts = source.Split(new[] { ".out[" }, StringSplitOptions.None);
                         if (parts.Length == 2 && parts[1].EndsWith("]"))
                         {
-                            var subcircuitName = parts[0];
+                            var gateName = parts[0];
                             int outputIndex;
                             try
                             {
@@ -336,17 +357,30 @@ namespace CircuitSimulator
                             {
                                 throw new DSLInvalidConnectionException(lines[i], "Invalid output index in source");
                             }
-                            if (circuit.NamedGates.TryGetValue(subcircuitName, out var subcircuitGate) && subcircuitGate is CircuitGate circuitGate)
+                            if (circuit.NamedGates.TryGetValue(gateName, out var gate) && (gate is CircuitGate || gate is LookupTableGate))
                             {
-                                if (outputIndex >= circuitGate.Outputs.Count)
+                                int maxOutputs = gate is CircuitGate circuitGate ? circuitGate.Outputs.Count : ((LookupTableGate)gate).Outputs.Count;
+                                if (outputIndex >= maxOutputs)
                                 {
-                                    throw new DSLInvalidConnectionException(lines[i], $"Output index {outputIndex} out of range for subcircuit '{subcircuitName}'");
+                                    throw new DSLInvalidConnectionException(lines[i], $"Output index {outputIndex} out of range for gate '{gateName}'");
                                 }
-                                // Create a SubcircuitOutputGate for this specific output
-                                var outputGate = new SubcircuitOutputGate(circuitGate, outputIndex);
-                                var outputGateName = $"{subcircuitName}_out_{outputIndex}";
-                                circuit.AddGate(outputGateName, outputGate);
-                                sourceObj = outputGate;
+                                
+                                if (gate is CircuitGate cg)
+                                {
+                                    // Create a SubcircuitOutputGate for this specific output
+                                    var outputGate = new SubcircuitOutputGate(cg, outputIndex);
+                                    var outputGateName = $"{gateName}_out_{outputIndex}";
+                                    circuit.AddGate(outputGateName, outputGate);
+                                    sourceObj = outputGate;
+                                }
+                                else if (gate is LookupTableGate ltg)
+                                {
+                                    // Create a LookupTableOutputGate for this specific output
+                                    var outputGate = new LookupTableOutputGate(ltg, outputIndex);
+                                    var outputGateName = $"{gateName}_out_{outputIndex}";
+                                    circuit.AddGate(outputGateName, outputGate);
+                                    sourceObj = outputGate;
+                                }
                             }
                         }
                     }
@@ -395,17 +429,32 @@ namespace CircuitSimulator
                             throw new DSLInvalidConnectionException(lines[i], "Invalid source or target in connection");
                         }
 
-                        // For subcircuits, we need to create a wrapper that extracts the specific output
-                        if (sourceGate is CircuitGate circuitGate && outputIndex < circuitGate.Outputs.Count)
+                        // For subcircuits and lookup tables, we need to create a wrapper that extracts the specific output
+                        if ((sourceGate is CircuitGate circuitGate && outputIndex < circuitGate.Outputs.Count) ||
+                            (sourceGate is LookupTableGate lookupTableGate && outputIndex < lookupTableGate.Outputs.Count))
                         {
-                            // Create a simple gate that outputs the specific index from the subcircuit
-                            var outputGate = new SubcircuitOutputGate(circuitGate, outputIndex);
-                            circuit.AddGate($"{source}_out_{outputIndex}", outputGate);
-                            circuit.ExternalOutputs[target] = outputGate;
+                            if (sourceGate is CircuitGate cg)
+                            {
+                                // Create a SubcircuitOutputGate for this specific output
+                                var outputGate = new SubcircuitOutputGate(cg, outputIndex);
+                                circuit.AddGate($"{source}_out_{outputIndex}", outputGate);
+                                circuit.ExternalOutputs[target] = outputGate;
+                            }
+                            else if (sourceGate is LookupTableGate ltg)
+                            {
+                                // Create a LookupTableOutputGate for this specific output
+                                var outputGate = new LookupTableOutputGate(ltg, outputIndex);
+                                circuit.AddGate($"{source}_out_{outputIndex}", outputGate);
+                                circuit.ExternalOutputs[target] = outputGate;
+                            }
                         }
                         else if (sourceGate is CircuitGate)
                         {
                             throw new DSLInvalidConnectionException(lines[i], $"Output index {outputIndex} out of range for subcircuit '{source}'");
+                        }
+                        else if (sourceGate is LookupTableGate)
+                        {
+                            throw new DSLInvalidConnectionException(lines[i], $"Output index {outputIndex} out of range for lookup table '{source}'");
                         }
                         else
                         {
@@ -416,6 +465,60 @@ namespace CircuitSimulator
                     {
                         throw new DSLInvalidConnectionException(lines[i], "Invalid connection syntax");
                     }
+                }
+                i++;
+            }
+            return i + 1;
+        }
+
+        private static int ParseLookupTables(string[] lines, int start)
+        {
+            int i = start;
+            while (i < lines.Length && lines[i] != "}")
+            {
+                var match = Regex.Match(lines[i], @"(\w+)\s*=\s*\{");
+                if (match.Success)
+                {
+                    var tableName = match.Groups[1].Value;
+                    var table = new Dictionary<string, bool[]>();
+                    
+                    i++; // skip the opening {
+                    
+                    // Parse table entries
+                    while (i < lines.Length && lines[i] != "}")
+                    {
+                        var entryMatch = Regex.Match(lines[i], @"(\d+)\s*->\s*(\d+)");
+                        if (entryMatch.Success)
+                        {
+                            var input = entryMatch.Groups[1].Value;
+                            var outputStr = entryMatch.Groups[2].Value;
+                            
+                            // Convert output binary string to bool array
+                            var output = new bool[outputStr.Length];
+                            for (int j = 0; j < outputStr.Length; j++)
+                            {
+                                if (outputStr[j] == '1')
+                                    output[j] = true;
+                                else if (outputStr[j] == '0')
+                                    output[j] = false;
+                                else
+                                    throw new DSLInvalidSyntaxException(lines[i], $"Invalid output bit '{outputStr[j]}'. Expected '0' or '1'");
+                            }
+                            
+                            table[input] = output;
+                        }
+                        else if (!string.IsNullOrWhiteSpace(lines[i]) && lines[i] != "}")
+                        {
+                            throw new DSLInvalidSyntaxException(lines[i], "Invalid lookup table entry. Expected 'input -> output'");
+                        }
+                        i++;
+                    }
+                    
+                    LookupTables[tableName] = table;
+                }
+                else if (!string.IsNullOrWhiteSpace(lines[i]) && lines[i] != "}")
+                {
+                    throw new DSLInvalidSyntaxException(lines[i], "Invalid lookup table definition. Expected 'name = {'");
                 }
                 i++;
             }

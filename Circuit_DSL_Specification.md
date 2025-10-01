@@ -59,14 +59,45 @@ outputs { name1, name2 }
 - Defines circuit output pins
 - Simple names only (no arrays)
 
+### Lookup Tables Block
+
+```
+lookup_tables {
+    table_name = {
+        input_binary -> output_binary
+        input_binary -> output_binary
+        ...
+    }
+}
+```
+
+- Defines custom truth tables for arbitrary logic functions
+- `input_binary` is a binary string representing all input combinations (e.g., "00", "01", "10", "11" for 2 inputs)
+- `output_binary` is a binary string representing multiple output bits (e.g., "10" for 2-bit output)
+- Tables are referenced by name in gate definitions
+- Input count is determined by the length of input binary strings
+- Output count is determined by the length of output binary strings
+
 ### Gates Block
 
 ```
 gates {
     gate_name = GateType()
     subcircuit_name = Circuit("CircuitName")
+    custom_name = LookupTable("table_name")
 }
 ```
+
+#### Custom Gates
+
+```
+custom_name = LookupTable("table_name")
+```
+
+- Creates a gate that uses the specified lookup table
+- Input count is determined by the table's input binary string length
+- Output count is determined by the table's output binary string length
+- Individual outputs can be accessed using `gate_name.out[index]` syntax
 
 #### Built-in Gate Types
 
@@ -161,28 +192,33 @@ circuit MultiBitTest {
 }
 ```
 
-### Hierarchical Circuit
+### Circuit with Multi-Bit Lookup Tables
 
 ```
-import "half_adder.circuit"
-
-circuit FullAdder {
-    inputs { a, b, cin }
-    outputs { sum, cout }
+circuit ALU {
+    inputs { a, b, op }
+    outputs { result0, result1 }
+    lookup_tables {
+        alu_table = {
+            000 -> 00  // NOP
+            001 -> 01  // Load 1
+            010 -> 10  // Load 2
+            011 -> 11  // Load 3
+            100 -> 10  // Add: 1+0=1 (01 in binary, but simplified)
+            101 -> 11  // Add+1: 1+0+1=2 (10 in binary, but simplified)
+            110 -> 00  // AND: 1&0=0
+            111 -> 01  // OR: 1|0=1
+        }
+    }
     gates {
-        ha1 = Circuit("HalfAdder")
-        ha2 = Circuit("HalfAdder")
-        or1 = OR()
+        alu = LookupTable("alu_table")
     }
     connections {
-        a -> ha1.in[0]
-        b -> ha1.in[1]
-        ha1.out[0] -> ha2.in[0]
-        cin -> ha2.in[1]
-        ha1.out[1] -> or1.in[0]
-        ha2.out[1] -> or1.in[1]
-        ha2.out[0] -> sum
-        or1.out -> cout
+        a -> alu.in[0]
+        b -> alu.in[1]
+        op -> alu.in[2]
+        alu.out[0] -> result0
+        alu.out[1] -> result1
     }
 }
 ```
@@ -193,7 +229,7 @@ The parser throws specific exceptions for common errors:
 
 - `DSLImportException`: Failed to import external circuit file
 - `DSLInvalidSyntaxException`: Malformed syntax in any block
-- `DSLInvalidGateException`: Unknown gate type or missing circuit reference
+- `DSLInvalidGateException`: Unknown gate type, missing circuit reference, or undefined lookup table
 - `DSLInvalidConnectionException`: Invalid connection syntax or missing source/target
 
 All exceptions inherit from `DSLParseException` for unified error handling.

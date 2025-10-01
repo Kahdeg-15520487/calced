@@ -137,4 +137,60 @@ namespace CircuitSimulator
             Outputs = new List<bool> { OutputIndex < ParentCircuitGate.Outputs.Count ? ParentCircuitGate.Outputs[OutputIndex] : false };
         }
     }
+
+    public class LookupTableGate : Gate
+    {
+        private Dictionary<string, bool[]> LookupTable { get; }
+
+        public LookupTableGate(Dictionary<string, bool[]> lookupTable)
+        {
+            LookupTable = lookupTable;
+            // Initialize outputs based on the first table entry
+            if (lookupTable.Count > 0)
+            {
+                var firstOutput = lookupTable.Values.First();
+                Outputs = new List<bool>(firstOutput);
+            }
+            else
+            {
+                Outputs = new List<bool> { false };
+            }
+        }
+
+        public override void Compute()
+        {
+            // Convert inputs to binary string key
+            string key = string.Join("", Inputs.Select(i => i ? "1" : "0"));
+            
+            // Look up the output values
+            if (LookupTable.TryGetValue(key, out bool[]? output))
+            {
+                Outputs = new List<bool>(output);
+            }
+            else
+            {
+                // Default to all false if key not found
+                Outputs = new List<bool>(new bool[Outputs.Count]);
+            }
+        }
+    }
+
+    public class LookupTableOutputGate : Gate
+    {
+        private LookupTableGate ParentLookupTableGate { get; }
+        private int OutputIndex { get; }
+
+        public LookupTableOutputGate(LookupTableGate parentLookupTableGate, int outputIndex)
+        {
+            ParentLookupTableGate = parentLookupTableGate;
+            OutputIndex = outputIndex;
+            Outputs = new List<bool> { false }; // Initialize with one output
+        }
+
+        public override void Compute()
+        {
+            // This gate's output is the specific output from the parent lookup table gate
+            Outputs = new List<bool> { OutputIndex < ParentLookupTableGate.Outputs.Count ? ParentLookupTableGate.Outputs[OutputIndex] : false };
+        }
+    }
 }
