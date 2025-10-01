@@ -198,7 +198,7 @@ namespace CircuitSimulator
                     string tableName = Previous().Value;
                     Consume(TokenType.RPAREN, "Expected ')' after table name");
 
-                    gate = DSLParser.CreateLookupTableGate(tableName);
+                    gate = RegexParser.CreateLookupTableGate(tableName);
                 }
                 else
                 {
@@ -206,7 +206,7 @@ namespace CircuitSimulator
                     Consume(TokenType.LPAREN, "Expected '(' after gate type");
                     Consume(TokenType.RPAREN, "Expected ')' after gate type");
 
-                    if (!DSLParser.GateFactory.TryGetValue(gateType, out var factory))
+                    if (!RegexParser.GateFactory.TryGetValue(gateType, out var factory))
                     {
                         throw new DSLInvalidGateException(gateName, $"Unknown gate type '{gateType}'");
                     }
@@ -269,7 +269,7 @@ namespace CircuitSimulator
                     }
                 }
 
-                DSLParser.LookupTables[tableName] = table;
+                RegexParser.LookupTables[tableName] = table;
 
                 Consume(TokenType.RBRACE, "Expected '}' after table entries");
 
@@ -287,27 +287,110 @@ namespace CircuitSimulator
         {
             Consume(TokenType.LBRACE, "Expected '{' after 'connections'");
 
-            // For now, skip the connections block
-            int braceCount = 1;
-            while (braceCount > 0 && !IsAtEnd())
+            while (!Check(TokenType.RBRACE) && !IsAtEnd())
             {
-                if (Match(TokenType.LBRACE))
+                // Parse source
+                string source = ParseSource();
+
+                Consume(TokenType.ARROW, "Expected '->' in connection");
+
+                // Parse target
+                string target = ParseTarget();
+
+                // Parse the connection: source -> target
+                // For now, implement basic connection parsing
+                ParseConnection(circuit, source, target);
+
+                if (!Check(TokenType.RBRACE))
                 {
-                    braceCount++;
-                }
-                else if (Match(TokenType.RBRACE))
-                {
-                    braceCount--;
-                }
-                else
-                {
-                    Advance(); // skip other tokens
+                    // Optional comma
+                    Match(TokenType.COMMA);
                 }
             }
 
-            if (braceCount > 0)
+            Consume(TokenType.RBRACE, "Expected '}' after connections");
+        }
+
+        private void ParseConnection(Circuit circuit, string source, string target)
+        {
+            object sourceObj;
+            Gate? targetGate = null;
+            int targetInputIndex;
+
+            // Parse source
+            if (circuit.ExternalInputs.ContainsKey(source))
             {
-                throw new DSLInvalidSyntaxException("Unterminated connections block", $"Missing closing '}}' for connections block");
+                sourceObj = source; // external input name
+            }
+            else if (source.Contains('.'))
+            {
+                // gate.output format
+                var parts = source.Split('.');
+                if (parts.Length == 2 && parts[1] == "out")
+                {
+                    if (circuit.NamedGates.TryGetValue(parts[0], out var gate))
+                    {
+                        sourceObj = gate;
+                    }
+                    else
+                    {
+                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Source gate '{parts[0]}' not found");
+                    }
+                }
+                else
+                {
+                    throw new DSLInvalidConnectionException($"{source} -> {target}", $"Invalid source format: {source}");
+                }
+            }
+            else
+            {
+                throw new DSLInvalidConnectionException($"{source} -> {target}", $"Unknown source: {source}");
+            }
+
+            // Parse target
+            if (target.Contains('.'))
+            {
+                var parts = target.Split('.');
+                if (parts.Length == 2 && parts[1].StartsWith("in[") && parts[1].EndsWith("]"))
+                {
+                    var indexStr = parts[1].Substring(3, parts[1].Length - 4);
+                    if (int.TryParse(indexStr, out targetInputIndex))
+                    {
+                        if (circuit.NamedGates.TryGetValue(parts[0], out targetGate))
+                        {
+                            // Connect
+                            circuit.Connect(sourceObj, targetGate, targetInputIndex);
+                        }
+                        else
+                        {
+                            throw new DSLInvalidConnectionException($"{source} -> {target}", $"Target gate '{parts[0]}' not found");
+                        }
+                    }
+                    else
+                    {
+                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Invalid input index: {indexStr}");
+                    }
+                }
+                else
+                {
+                    throw new DSLInvalidConnectionException($"{source} -> {target}", $"Invalid target format: {target}");
+                }
+            }
+            else if (circuit.ExternalOutputs.ContainsKey(target))
+            {
+                // Connecting to external output
+                if (sourceObj is Gate sourceGate)
+                {
+                    circuit.ExternalOutputs[target] = sourceGate;
+                }
+                else
+                {
+                    throw new DSLInvalidConnectionException($"{source} -> {target}", "Cannot connect external input directly to external output");
+                }
+            }
+            else
+            {
+                throw new DSLInvalidConnectionException($"{source} -> {target}", $"Unknown target: {target}");
             }
         }
 
@@ -315,6 +398,15 @@ namespace CircuitSimulator
         {
             Consume(TokenType.IDENTIFIER, "Expected source identifier");
             string source = Previous().Value;
+
+            // Handle array notation like value[0]
+            if (Match(TokenType.LBRACKET))
+            {
+                Consume(TokenType.NUMBER, "Expected array index");
+                string index = Previous().Value;
+                Consume(TokenType.RBRACKET, "Expected ']' after array index");
+                source += $"[{index}]";
+            }
 
             if (Match(TokenType.DOT))
             {

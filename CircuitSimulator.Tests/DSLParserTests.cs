@@ -24,7 +24,7 @@ circuit TestCircuit {
     }
 }
 ";
-            var circuit = DSLParser.Parse(dsl, ".");
+            var circuit = RegexParser.Parse(dsl, ".");
 
             Assert.Equal(2, circuit.Gates.Count);
             Assert.True(circuit.NamedGates.ContainsKey("and1"));
@@ -49,7 +49,7 @@ circuit TestCircuit {
     }
 }
 ";
-            var circuit = DSLParser.Parse(dsl, ".");
+            var circuit = RegexParser.Parse(dsl, ".");
 
             Assert.True(circuit.ExternalInputs.ContainsKey("data[0]"));
             Assert.True(circuit.ExternalInputs.ContainsKey("data[1]"));
@@ -73,7 +73,7 @@ circuit TestCircuit {
     }
 }
 ";
-            var circuit = DSLParser.Parse(dsl, ".");
+            var circuit = RegexParser.Parse(dsl, ".");
 
             // Set external inputs
             circuit.ExternalInputs["a"] = true;
@@ -100,7 +100,7 @@ circuit TestCircuit {
     }
 }
 ";
-            var circuit = DSLParser.Parse(dsl, ".");
+            var circuit = RegexParser.Parse(dsl, ".");
 
             var visualization = circuit.Visualize();
 
@@ -135,7 +135,7 @@ circuit TestCircuit {
     }
 }
 ";
-            var circuit = DSLParser.Parse(dsl, ".", useNewParser: true);
+            var circuit = RegexParser.Parse(dsl, ".", useNewParser: true);
 
             Assert.Equal("TestCircuit", circuit.Name);
             Assert.Single(circuit.Gates);

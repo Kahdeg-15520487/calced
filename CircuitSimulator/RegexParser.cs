@@ -39,7 +39,7 @@ namespace CircuitSimulator
             : base($"Invalid connection '{connection}': {reason}") { }
     }
 
-    public class DSLParser
+    public class RegexParser
     {
         internal static readonly Dictionary<string, Func<Gate>> GateFactory = new Dictionary<string, Func<Gate>>
         {

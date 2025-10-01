@@ -1,15 +1,11 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-
 namespace CircuitSimulator
 {
     public abstract class Gate
     {
-        public List<bool> Inputs { get; set; } = new List<bool>();
-        public List<bool> Outputs { get; protected set; } = new List<bool>();
+        public List<bool> Inputs { get; set; } = [];
+        public List<bool> Outputs { get; protected set; } = [];
 
-        public bool Output => Outputs.Count > 0 ? Outputs[0] : false;
+        public bool Output => Outputs.Count > 0 && Outputs[0];
 
         public abstract void Compute();
     }
@@ -18,7 +14,7 @@ namespace CircuitSimulator
     {
         public override void Compute()
         {
-            Outputs = new List<bool> { Inputs.All(i => i) };
+            Outputs = [Inputs.All(i => i)];
         }
     }
 
@@ -26,7 +22,7 @@ namespace CircuitSimulator
     {
         public override void Compute()
         {
-            Outputs = new List<bool> { Inputs.Any(i => i) };
+            Outputs = [Inputs.Any(i => i)];
         }
     }
 
@@ -35,7 +31,7 @@ namespace CircuitSimulator
         public override void Compute()
         {
             if (Inputs.Count != 1) throw new InvalidOperationException("NOT gate must have exactly one input.");
-            Outputs = new List<bool> { !Inputs[0] };
+            Outputs = [!Inputs[0]];
         }
     }
 
@@ -43,7 +39,7 @@ namespace CircuitSimulator
     {
         public override void Compute()
         {
-            Outputs = new List<bool> { !Inputs.All(i => i) };
+            Outputs = [!Inputs.All(i => i)];
         }
     }
 
@@ -51,7 +47,7 @@ namespace CircuitSimulator
     {
         public override void Compute()
         {
-            Outputs = new List<bool> { !Inputs.Any(i => i) };
+            Outputs = [!Inputs.Any(i => i)];
         }
     }
 
@@ -59,7 +55,7 @@ namespace CircuitSimulator
     {
         public override void Compute()
         {
-            Outputs = new List<bool> { Inputs.Count(i => i) % 2 == 1 };
+            Outputs = [Inputs.Count(i => i) % 2 == 1];
         }
     }
 
@@ -67,7 +63,7 @@ namespace CircuitSimulator
     {
         public override void Compute()
         {
-            Outputs = new List<bool> { Inputs.Count(i => i) % 2 == 0 };
+            Outputs = [Inputs.Count(i => i) % 2 == 0];
         }
     }
 
@@ -81,7 +77,7 @@ namespace CircuitSimulator
             {
                 _q = Inputs[0]; // D
             }
-            Outputs = new List<bool> { _q };
+            Outputs = [_q];
         }
     }
 
@@ -93,7 +89,7 @@ namespace CircuitSimulator
         {
             SubCircuit = subCircuit;
             // Initialize outputs list with the same size as subcircuit outputs
-            Outputs = new List<bool>(new bool[subCircuit.ExternalOutputs.Count]);
+            Outputs = [.. new bool[subCircuit.ExternalOutputs.Count]];
         }
 
         public override void Compute()
@@ -128,13 +124,13 @@ namespace CircuitSimulator
         {
             ParentCircuitGate = parentCircuitGate;
             OutputIndex = outputIndex;
-            Outputs = new List<bool> { false }; // Initialize with one output
+            Outputs = [false]; // Initialize with one output
         }
 
         public override void Compute()
         {
             // This gate's output is the specific output from the parent subcircuit
-            Outputs = new List<bool> { OutputIndex < ParentCircuitGate.Outputs.Count ? ParentCircuitGate.Outputs[OutputIndex] : false };
+            Outputs = [(OutputIndex < ParentCircuitGate.Outputs.Count && ParentCircuitGate.Outputs[OutputIndex])];
         }
     }
 
@@ -149,11 +145,11 @@ namespace CircuitSimulator
             if (lookupTable.Count > 0)
             {
                 var firstOutput = lookupTable.Values.First();
-                Outputs = new List<bool>(firstOutput);
+                Outputs = [.. firstOutput];
             }
             else
             {
-                Outputs = new List<bool> { false };
+                Outputs = [false];
             }
         }
 
@@ -165,12 +161,12 @@ namespace CircuitSimulator
             // Look up the output values
             if (LookupTable.TryGetValue(key, out bool[]? output))
             {
-                Outputs = new List<bool>(output);
+                Outputs = [.. output];
             }
             else
             {
                 // Default to all false if key not found
-                Outputs = new List<bool>(new bool[Outputs.Count]);
+                Outputs = [.. new bool[Outputs.Count]];
             }
         }
     }
@@ -184,13 +180,13 @@ namespace CircuitSimulator
         {
             ParentLookupTableGate = parentLookupTableGate;
             OutputIndex = outputIndex;
-            Outputs = new List<bool> { false }; // Initialize with one output
+            Outputs = [false]; // Initialize with one output
         }
 
         public override void Compute()
         {
             // This gate's output is the specific output from the parent lookup table gate
-            Outputs = new List<bool> { OutputIndex < ParentLookupTableGate.Outputs.Count ? ParentLookupTableGate.Outputs[OutputIndex] : false };
+            Outputs = [OutputIndex < ParentLookupTableGate.Outputs.Count && ParentLookupTableGate.Outputs[OutputIndex]];
         }
     }
 }

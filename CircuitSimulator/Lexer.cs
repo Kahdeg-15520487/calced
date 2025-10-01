@@ -101,8 +101,9 @@ namespace CircuitSimulator
                     case '-':
                         if (Peek() == '>')
                         {
-                            Consume(); // consume '>'
-                            yield return new Token(TokenType.ARROW, "->", _line, _column - 1);
+                            _position += 2; // consume both '-' and '>'
+                            _column += 2;
+                            yield return new Token(TokenType.ARROW, "->", _line, _column - 2);
                         }
                         else
                         {
