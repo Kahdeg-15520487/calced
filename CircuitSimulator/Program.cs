@@ -149,26 +149,71 @@ namespace CircuitSimulator
                 }
             }
 
-            // Simulate for specified number of ticks
-            for (int i = 0; i < ticks; i++)
-            {
-                circuit.Tick();
-            }
-
-            // Output results
-            Console.WriteLine($"Simulation Results (after {ticks} ticks):");
-            Console.WriteLine("Inputs:");
-            foreach (var kvp in circuit.ExternalInputs)
-            {
-                Console.WriteLine($"  {kvp.Key}: {(kvp.Value ? 1 : 0)}");
-            }
-            Console.WriteLine("Outputs:");
+            // Simulate for specified number of ticks and collect state history
+            var stateHistory = new List<(int Tick, Dictionary<string, bool> Inputs, Dictionary<string, bool> Outputs)>();
+            
+            // Record initial state (before any ticks)
+            var initialOutputs = new Dictionary<string, bool>();
             foreach (var kvp in circuit.ExternalOutputs)
             {
                 var gate = kvp.Value;
-                var outputValue = gate?.Output ?? false;
-                Console.WriteLine($"  {kvp.Key}: {(outputValue ? 1 : 0)}");
+                initialOutputs[kvp.Key] = gate?.Output ?? false;
             }
+            stateHistory.Add((0, new Dictionary<string, bool>(circuit.ExternalInputs), initialOutputs));
+
+            // Simulate and record state after each tick
+            for (int i = 0; i < ticks; i++)
+            {
+                circuit.Tick();
+                
+                var tickOutputs = new Dictionary<string, bool>();
+                foreach (var kvp in circuit.ExternalOutputs)
+                {
+                    var gate = kvp.Value;
+                    tickOutputs[kvp.Key] = gate?.Output ?? false;
+                }
+                stateHistory.Add((i + 1, new Dictionary<string, bool>(circuit.ExternalInputs), tickOutputs));
+            }
+
+            // Generate markdown table report
+            GenerateMarkdownReport(stateHistory);
+        }
+
+        static void GenerateMarkdownReport(List<(int Tick, Dictionary<string, bool> Inputs, Dictionary<string, bool> Outputs)> stateHistory)
+        {
+            if (stateHistory.Count == 0) return;
+
+            var firstState = stateHistory[0];
+            var inputNames = firstState.Inputs.Keys.OrderBy(k => k).ToList();
+            var outputNames = firstState.Outputs.Keys.OrderBy(k => k).ToList();
+
+            // Header
+            Console.WriteLine("\n## Simulation Report");
+            Console.WriteLine();
+            
+            // Table header
+            var header = "| Tick | " + string.Join(" | ", inputNames.Select(n => $"**{n}**")) + 
+                        " | " + string.Join(" | ", outputNames.Select(n => $"**{n}**")) + " |";
+            var separator = "|------|" + string.Join("", inputNames.Select(_ => "------|")) + 
+                           string.Join("", outputNames.Select(_ => "------|"));
+
+            Console.WriteLine(header);
+            Console.WriteLine(separator);
+
+            // Table rows
+            foreach (var (tick, inputs, outputs) in stateHistory)
+            {
+                var inputValues = string.Join(" | ", inputNames.Select(name => inputs.TryGetValue(name, out var value) ? (value ? "1" : "0") : "X"));
+                var outputValues = string.Join(" | ", outputNames.Select(name => outputs.TryGetValue(name, out var value) ? (value ? "1" : "0") : "X"));
+                Console.WriteLine($"| {tick} | {inputValues} | {outputValues} |");
+            }
+
+            Console.WriteLine();
+            Console.WriteLine($"**Total ticks simulated:** {stateHistory.Count - 1}");
+            Console.WriteLine($"**Final state after {stateHistory.Count - 1} ticks:**");
+            var finalState = stateHistory.Last();
+            Console.WriteLine("**Inputs:** " + string.Join(", ", inputNames.Select(name => $"{name}={(finalState.Inputs[name] ? 1 : 0)}")));
+            Console.WriteLine("**Outputs:** " + string.Join(", ", outputNames.Select(name => $"{name}={(finalState.Outputs[name] ? 1 : 0)}")));
         }
     }
 }
