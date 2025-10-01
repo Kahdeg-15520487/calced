@@ -6,6 +6,39 @@ using System.Text.RegularExpressions;
 
 namespace CircuitSimulator
 {
+    // Custom exception classes for DSL parsing errors
+    public class DSLParseException : Exception
+    {
+        public DSLParseException(string message) : base(message) { }
+        public DSLParseException(string message, Exception innerException) : base(message, innerException) { }
+    }
+
+    public class DSLImportException : DSLParseException
+    {
+        public DSLImportException(string fileName, Exception innerException)
+            : base($"Failed to import file '{fileName}': {innerException.Message}", innerException) { }
+    }
+
+    public class DSLInvalidSyntaxException : DSLParseException
+    {
+        public DSLInvalidSyntaxException(string line, string reason)
+            : base($"Invalid syntax in line '{line}': {reason}") { }
+    }
+
+    public class DSLInvalidGateException : DSLParseException
+    {
+        public DSLInvalidGateException(string gateName, string reason)
+            : base($"Invalid gate definition for '{gateName}': {reason}") { }
+        public DSLInvalidGateException(string gateName, string reason, Exception innerException)
+            : base($"Invalid gate definition for '{gateName}': {reason}", innerException) { }
+    }
+
+    public class DSLInvalidConnectionException : DSLParseException
+    {
+        public DSLInvalidConnectionException(string connection, string reason)
+            : base($"Invalid connection '{connection}': {reason}") { }
+    }
+
     public class DSLParser
     {
         internal static readonly Dictionary<string, Func<Gate>> GateFactory = new Dictionary<string, Func<Gate>>
@@ -60,32 +93,37 @@ namespace CircuitSimulator
                 {
                     // Parse import statement: import "filename.circuit"
                     var match = Regex.Match(lines[i], @"import ""([^""]+)""");
-                    if (match.Success)
+                    if (!match.Success)
                     {
-                        var importFile = match.Groups[1].Value;
-                        try
+                        throw new DSLInvalidSyntaxException(lines[i], "Invalid import statement. Expected 'import \"filename\"'");
+                    }
+                    var importFile = match.Groups[1].Value;
+                    try
+                    {
+                        var importPath = Path.Combine(basePath, importFile);
+                        var importedDsl = File.ReadAllText(importPath);
+                        var importedCircuits = ParseCircuitsFromText(importedDsl, basePath);
+                        foreach (var kvp in importedCircuits)
                         {
-                            var importPath = Path.Combine(basePath, importFile);
-                            var importedDsl = File.ReadAllText(importPath);
-                            var importedCircuits = ParseCircuitsFromText(importedDsl, basePath);
-                            foreach (var kvp in importedCircuits)
-                            {
-                                circuits[kvp.Key] = kvp.Value;
-                                // Don't add imported circuits to parse order
-                            }
+                            circuits[kvp.Key] = kvp.Value;
+                            // Don't add imported circuits to parse order
                         }
-                        catch (Exception ex)
-                        {
-                            // For now, just continue if import fails
-                            Console.WriteLine($"Warning: Failed to import {importFile}: {ex.Message}");
-                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new DSLImportException(importFile, ex);
                     }
                     i++;
                 }
                 else if (lines[i].StartsWith("circuit "))
                 {
                     // Parse circuit name
-                    var currentCircuitName = Regex.Match(lines[i], @"circuit (\w+)").Groups[1].Value;
+                    var match = Regex.Match(lines[i], @"circuit (\w+)");
+                    if (!match.Success)
+                    {
+                        throw new DSLInvalidSyntaxException(lines[i], "Invalid circuit declaration. Expected 'circuit <name>'");
+                    }
+                    var currentCircuitName = match.Groups[1].Value;
                     var circuit = new Circuit();
                     circuits[currentCircuitName] = circuit;
                     parseOrder.Add(currentCircuitName); // Track local circuit definition order
@@ -102,12 +140,23 @@ namespace CircuitSimulator
                             {
                                 if (input.Contains("["))
                                 {
-                                    var match = Regex.Match(input, @"(\w+)\[(\d+)\]");
-                                    var name = match.Groups[1].Value;
-                                    var size = int.Parse(match.Groups[2].Value);
-                                    for (int j = 0; j < size; j++)
+                                    var inputMatch = Regex.Match(input, @"(\w+)\[(\d+)\]");
+                                    if (!inputMatch.Success)
                                     {
-                                        circuit.ExternalInputs[$"{name}[{j}]"] = false;
+                                        throw new DSLInvalidSyntaxException(input, "Invalid array input syntax. Expected 'name[size]'");
+                                    }
+                                    var name = inputMatch.Groups[1].Value;
+                                    try
+                                    {
+                                        var size = int.Parse(inputMatch.Groups[2].Value);
+                                        for (int j = 0; j < size; j++)
+                                        {
+                                            circuit.ExternalInputs[$"{name}[{j}]"] = false;
+                                        }
+                                    }
+                                    catch (FormatException)
+                                    {
+                                        throw new DSLInvalidSyntaxException(input, "Invalid size in array input. Expected integer");
                                     }
                                 }
                                 else
@@ -212,26 +261,23 @@ namespace CircuitSimulator
                     {
                         var circuitRef = args.Trim('"');
                         
-                        // First try to find circuit in the same file
-                        if (circuits.ContainsKey(circuitRef))
+                        if (!circuits.ContainsKey(circuitRef))
                         {
-                            var subCircuit = circuits[circuitRef];
-                            var gate = new CircuitGate(subCircuit);
-                            circuit.AddGate(name, gate);
+                            throw new DSLInvalidGateException(name, $"Circuit '{circuitRef}' not found in current file");
                         }
-                        else
-                        {
-                            // Fall back to loading from file
-                            var subCircuitPath = Path.Combine(basePath, circuitRef + ".circuit");
-                            var subCircuit = DSLParser.Parse(File.ReadAllText(subCircuitPath), basePath);
-                            var gate = new CircuitGate(subCircuit);
-                            circuit.AddGate(name, gate);
-                        }
+                        
+                        var subCircuit = circuits[circuitRef];
+                        var gate = new CircuitGate(subCircuit);
+                        circuit.AddGate(name, gate);
                     }
                     else if (GateFactory.TryGetValue(type, out var factory))
                     {
                         var gate = factory();
                         circuit.AddGate(name, gate);
+                    }
+                    else
+                    {
+                        throw new DSLInvalidGateException(name, $"Unknown gate type '{type}'");
                     }
                 }
                 i++;
@@ -249,7 +295,21 @@ namespace CircuitSimulator
                 {
                     var source = inputMatch.Groups[1].Value.Trim();
                     var target = inputMatch.Groups[2].Value.Trim();
-                    var index = int.Parse(inputMatch.Groups[3].Value);
+                    int index;
+                    try
+                    {
+                        index = int.Parse(inputMatch.Groups[3].Value);
+                    }
+                    catch (FormatException)
+                    {
+                        throw new DSLInvalidConnectionException(lines[i], "Invalid input index");
+                    }
+
+                    // Handle .out suffix for regular gates
+                    if (source.EndsWith(".out"))
+                    {
+                        source = source.Substring(0, source.Length - 4);
+                    }
 
                     object? sourceObj = null;
                     if (circuit.NamedGates.TryGetValue(source, out var sourceGate))
@@ -267,9 +327,21 @@ namespace CircuitSimulator
                         if (parts.Length == 2 && parts[1].EndsWith("]"))
                         {
                             var subcircuitName = parts[0];
-                            var outputIndex = int.Parse(parts[1].TrimEnd(']'));
+                            int outputIndex;
+                            try
+                            {
+                                outputIndex = int.Parse(parts[1].TrimEnd(']'));
+                            }
+                            catch (FormatException)
+                            {
+                                throw new DSLInvalidConnectionException(lines[i], "Invalid output index in source");
+                            }
                             if (circuit.NamedGates.TryGetValue(subcircuitName, out var subcircuitGate) && subcircuitGate is CircuitGate circuitGate)
                             {
+                                if (outputIndex >= circuitGate.Outputs.Count)
+                                {
+                                    throw new DSLInvalidConnectionException(lines[i], $"Output index {outputIndex} out of range for subcircuit '{subcircuitName}'");
+                                }
                                 // Create a SubcircuitOutputGate for this specific output
                                 var outputGate = new SubcircuitOutputGate(circuitGate, outputIndex);
                                 var outputGateName = $"{subcircuitName}_out_{outputIndex}";
@@ -279,10 +351,11 @@ namespace CircuitSimulator
                         }
                     }
 
-                    if (circuit.NamedGates.TryGetValue(target, out var targetGate) && sourceObj != null)
+                    if (sourceObj == null || !circuit.NamedGates.TryGetValue(target, out var targetGate))
                     {
-                        circuit.Connect(sourceObj, targetGate, index);
+                        throw new DSLInvalidConnectionException(lines[i], "Invalid source or target in connection");
                     }
+                    circuit.Connect(sourceObj, targetGate, index);
                 }
                 else
                 {
@@ -306,25 +379,42 @@ namespace CircuitSimulator
                             if (parts.Length == 2 && parts[1].EndsWith("]"))
                             {
                                 source = parts[0];
-                                outputIndex = int.Parse(parts[1].TrimEnd(']'));
+                                try
+                                {
+                                    outputIndex = int.Parse(parts[1].TrimEnd(']'));
+                                }
+                                catch (FormatException)
+                                {
+                                    throw new DSLInvalidConnectionException(lines[i], "Invalid output index in source");
+                                }
                             }
                         }
 
-                        if (circuit.NamedGates.TryGetValue(source, out var sourceGate) && circuit.ExternalOutputs.ContainsKey(target))
+                        if (!circuit.NamedGates.TryGetValue(source, out var sourceGate) || !circuit.ExternalOutputs.ContainsKey(target))
                         {
-                            // For subcircuits, we need to create a wrapper that extracts the specific output
-                            if (sourceGate is CircuitGate circuitGate && outputIndex < circuitGate.Outputs.Count)
-                            {
-                                // Create a simple gate that outputs the specific index from the subcircuit
-                                var outputGate = new SubcircuitOutputGate(circuitGate, outputIndex);
-                                circuit.AddGate($"{source}_out_{outputIndex}", outputGate);
-                                circuit.ExternalOutputs[target] = outputGate;
-                            }
-                            else
-                            {
-                                circuit.ExternalOutputs[target] = sourceGate;
-                            }
+                            throw new DSLInvalidConnectionException(lines[i], "Invalid source or target in connection");
                         }
+
+                        // For subcircuits, we need to create a wrapper that extracts the specific output
+                        if (sourceGate is CircuitGate circuitGate && outputIndex < circuitGate.Outputs.Count)
+                        {
+                            // Create a simple gate that outputs the specific index from the subcircuit
+                            var outputGate = new SubcircuitOutputGate(circuitGate, outputIndex);
+                            circuit.AddGate($"{source}_out_{outputIndex}", outputGate);
+                            circuit.ExternalOutputs[target] = outputGate;
+                        }
+                        else if (sourceGate is CircuitGate)
+                        {
+                            throw new DSLInvalidConnectionException(lines[i], $"Output index {outputIndex} out of range for subcircuit '{source}'");
+                        }
+                        else
+                        {
+                            circuit.ExternalOutputs[target] = sourceGate;
+                        }
+                    }
+                    else
+                    {
+                        throw new DSLInvalidConnectionException(lines[i], "Invalid connection syntax");
                     }
                 }
                 i++;
