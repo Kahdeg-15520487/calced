@@ -65,8 +65,10 @@ namespace CircuitSimulator
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("Usage: CircuitSimulator <dsl-file> [--<input>=<value>]...");
-                Console.WriteLine("Example: CircuitSimulator circuit.dsl --a=true --b=false");
+                Console.WriteLine("Usage: CircuitSimulator <dsl-file> [--<input>=<value>]... [--ticks=N]");
+                Console.WriteLine("Examples:");
+                Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --ticks=10");
+                Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --b=false --ticks=5");
                 return;
             }
 
@@ -81,7 +83,8 @@ namespace CircuitSimulator
             var basePath = Path.GetDirectoryName(Path.GetFullPath(dslFile)) ?? ".";
             var circuit = RegexParser.Parse(dsl, basePath, useNewParser: true);
 
-            // Parse input values
+            // Parse input values and ticks
+            int ticks = 3; // default
             for (int i = 1; i < args.Length; i++)
             {
                 var arg = args[i];
@@ -90,51 +93,70 @@ namespace CircuitSimulator
                     var parts = arg.Substring(2).Split('=');
                     if (parts.Length == 2)
                     {
-                        var inputName = parts[0];
+                        var paramName = parts[0];
                         var valueStr = parts[1];
-                        if (bool.TryParse(valueStr, out var boolValue))
+
+                        if (paramName == "ticks")
                         {
-                            // Single boolean input
-                            if (circuit.ExternalInputs.ContainsKey(inputName))
+                            if (int.TryParse(valueStr, out var ticksValue) && ticksValue > 0)
                             {
-                                circuit.ExternalInputs[inputName] = boolValue;
+                                ticks = ticksValue;
                             }
                             else
                             {
-                                Console.WriteLine($"Unknown input: {inputName}");
+                                Console.WriteLine($"Invalid ticks value: {valueStr}. Must be a positive integer.");
+                                return;
                             }
                         }
                         else
                         {
-                            // Try to parse as multi-bit value
-                            try
+                            // Handle input parameters
+                            var inputName = paramName;
+                            if (bool.TryParse(valueStr, out var boolValue))
                             {
-                                var bits = ParseMultiBitValue(valueStr);
-                                if (bits.Length == 1 && circuit.ExternalInputs.ContainsKey(inputName))
+                                // Single boolean input
+                                if (circuit.ExternalInputs.ContainsKey(inputName))
                                 {
-                                    circuit.ExternalInputs[inputName] = bits[0];
+                                    circuit.ExternalInputs[inputName] = boolValue;
                                 }
                                 else
                                 {
-                                    SetMultiBitInput(circuit, inputName, bits);
+                                    Console.WriteLine($"Unknown input: {inputName}");
                                 }
                             }
-                            catch (ArgumentException ex)
+                            else
                             {
-                                Console.WriteLine($"Invalid value for {inputName}: {valueStr} ({ex.Message})");
+                                // Try to parse as multi-bit value
+                                try
+                                {
+                                    var bits = ParseMultiBitValue(valueStr);
+                                    if (bits.Length == 1 && circuit.ExternalInputs.ContainsKey(inputName))
+                                    {
+                                        circuit.ExternalInputs[inputName] = bits[0];
+                                    }
+                                    else
+                                    {
+                                        SetMultiBitInput(circuit, inputName, bits);
+                                    }
+                                }
+                                catch (ArgumentException ex)
+                                {
+                                    Console.WriteLine($"Invalid value for {inputName}: {valueStr} ({ex.Message})");
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Simulate
-            circuit.Tick();
-            circuit.Tick(); // Second tick to propagate subcircuit outputs
-            circuit.Tick(); // Third tick for hierarchical propagation
+            // Simulate for specified number of ticks
+            for (int i = 0; i < ticks; i++)
+            {
+                circuit.Tick();
+            }
 
             // Output results
-            Console.WriteLine("Simulation Results:");
+            Console.WriteLine($"Simulation Results (after {ticks} ticks):");
             Console.WriteLine("Inputs:");
             foreach (var kvp in circuit.ExternalInputs)
             {

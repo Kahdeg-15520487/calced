@@ -1,0 +1,12 @@
+circuit SequentialTest {
+    inputs { data, clk }
+    outputs { q }
+    gates {
+        dff1 = DFF()
+    }
+    connections {
+        data -> dff1.in[0]
+        clk -> dff1.in[1]
+        dff1.out -> q
+    }
+}
