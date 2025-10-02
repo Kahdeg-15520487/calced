@@ -24,7 +24,11 @@ circuit TestCircuit {
     }
 }
 ";
-            var circuit = RegexParser.Parse(dsl, ".");
+            var lexer = new Lexer(dsl);
+            var tokens = lexer.Tokenize().ToList();
+            var parser = new Parser(tokens, ".");
+            var circuits = parser.ParseCircuits();
+            var circuit = circuits.LastOrDefault().Value;
 
             Assert.Equal(2, circuit.Gates.Count);
             Assert.True(circuit.NamedGates.ContainsKey("and1"));
@@ -49,7 +53,11 @@ circuit TestCircuit {
     }
 }
 ";
-            var circuit = RegexParser.Parse(dsl, ".");
+            var lexer = new Lexer(dsl);
+            var tokens = lexer.Tokenize().ToList();
+            var parser = new Parser(tokens, ".");
+            var circuits = parser.ParseCircuits();
+            var circuit = circuits.LastOrDefault().Value;
 
             Assert.True(circuit.ExternalInputs.ContainsKey("data[0]"));
             Assert.True(circuit.ExternalInputs.ContainsKey("data[1]"));
@@ -73,7 +81,11 @@ circuit TestCircuit {
     }
 }
 ";
-            var circuit = RegexParser.Parse(dsl, ".");
+            var lexer = new Lexer(dsl);
+            var tokens = lexer.Tokenize().ToList();
+            var parser = new Parser(tokens, ".");
+            var circuits = parser.ParseCircuits();
+            var circuit = circuits.LastOrDefault().Value;
 
             // Set external inputs
             circuit.ExternalInputs["a"] = true;
@@ -100,7 +112,11 @@ circuit TestCircuit {
     }
 }
 ";
-            var circuit = RegexParser.Parse(dsl, ".");
+            var lexer = new Lexer(dsl);
+            var tokens = lexer.Tokenize().ToList();
+            var parser = new Parser(tokens, ".");
+            var circuits = parser.ParseCircuits();
+            var circuit = circuits.LastOrDefault().Value;
 
             var visualization = circuit.Visualize();
 
@@ -135,7 +151,11 @@ circuit TestCircuit {
     }
 }
 ";
-            var circuit = RegexParser.Parse(dsl, ".", useNewParser: true);
+            var lexer = new Lexer(dsl);
+            var tokens = lexer.Tokenize().ToList();
+            var parser = new Parser(tokens, ".");
+            var circuits = parser.ParseCircuits();
+            var circuit = circuits.LastOrDefault().Value;
 
             Assert.Equal("TestCircuit", circuit.Name);
             Assert.Single(circuit.Gates);

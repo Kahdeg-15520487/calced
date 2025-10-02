@@ -1,0 +1,46 @@
+import "full_adder.circuit"
+
+circuit FourBitAdder {
+    inputs { a[4], b[4], k }
+    outputs { sum[4], cout }
+    gates {
+        fa1 = Circuit("FullAdder")
+        fa2 = Circuit("FullAdder")
+        fa3 = Circuit("FullAdder")
+        fa4 = Circuit("FullAdder")
+        xor1 = XOR()
+        xor2 = XOR()
+        xor3 = XOR()
+        xor4 = XOR()
+    }
+    connections {
+        k -> fa1.in.cin
+        a[0] -> fa1.in.a
+        k -> xor1.in[0]
+        b[0] -> xor1.in[1]
+        xor1.out -> fa1.in.b
+        fa1.out.sum -> sum[0]
+
+        fa1.out.cout -> fa2.in.cin
+        a[1] -> fa2.in.a
+        k -> xor2.in[0]
+        b[1] -> xor2.in[1]
+        xor2.out -> fa2.in.b
+        fa2.out.sum -> sum[1]
+
+        fa2.out.cout -> fa3.in.cin
+        a[2] -> fa3.in.a
+        k -> xor3.in[0]
+        b[2] -> xor3.in[1]
+        xor3.out -> fa3.in.b
+        fa3.out.sum -> sum [2]
+
+        fa3.out.cout -> fa4.in.cin
+        a[3] -> fa4.in.a
+        k -> xor4.in[0]
+        b[3] -> xor4.in[1]
+        xor4.out -> fa4.in.b
+        fa4.out.sum -> sum[3]
+        fa4.out.cout -> cout
+    }
+}
