@@ -107,7 +107,7 @@ namespace CircuitSimulator
                         }
                         else
                         {
-                            throw new DSLInvalidSyntaxException($"Unexpected character: {current}", $"Invalid token at line {_line}, column {_column}");
+                            throw new DSLInvalidSyntaxException(_line, _column, $"Unexpected character: {current}");
                         }
                         break;
                     default:
@@ -121,7 +121,7 @@ namespace CircuitSimulator
                         }
                         else
                         {
-                            throw new DSLInvalidSyntaxException($"Unexpected character: {current}", $"Invalid token at line {_line}, column {_column}");
+                            throw new DSLInvalidSyntaxException(_line, _column, $"Unexpected character: {current}");
                         }
                         break;
                 }
@@ -186,7 +186,7 @@ namespace CircuitSimulator
             {
                 if (_input[_position] == '\n')
                 {
-                    throw new DSLInvalidSyntaxException("Unterminated string literal", $"String starting at line {_line}, column {startColumn}");
+                    throw new DSLInvalidSyntaxException(_line, _column, "Unterminated string literal");
                 }
                 _position++;
                 _column++;
@@ -194,7 +194,7 @@ namespace CircuitSimulator
 
             if (_position >= _input.Length)
             {
-                throw new DSLInvalidSyntaxException("Unterminated string literal", $"String starting at line {_line}, column {startColumn}");
+                throw new DSLInvalidSyntaxException(_line, _column, "Unterminated string literal");
             }
 
             string value = _input.Substring(start, _position - start);

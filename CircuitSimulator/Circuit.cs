@@ -46,65 +46,69 @@ namespace CircuitSimulator
         // Simulate one tick: propagate signals
         public void Tick()
         {
-            // First, set inputs based on connections
-            foreach (var gate in Gates)
+            // For combinational circuits, do multiple passes to propagate signals
+            for (int pass = 0; pass < 3; pass++)
             {
-                if (Connections.ContainsKey(gate))
+                // First, set inputs based on connections
+                foreach (var gate in Gates)
                 {
-                    var sources = Connections[gate];
-                    gate.Inputs.Clear();
-                    foreach (var source in sources)
+                    if (Connections.ContainsKey(gate))
                     {
-                        if (source is Gate gateSource)
+                        var sources = Connections[gate];
+                        gate.Inputs.Clear();
+                        foreach (var source in sources)
                         {
-                            gate.Inputs.Add(gateSource.Outputs[0]);
-                        }
-                        else if (source is string inputName)
-                        {
-                            gate.Inputs.Add(ExternalInputs[inputName]);
-                        }
-                        else
-                        {
-                            // For unconnected inputs, assume false
-                            gate.Inputs.Add(false);
+                            if (source is Gate gateSource)
+                            {
+                                gate.Inputs.Add(gateSource.Outputs[0]);
+                            }
+                            else if (source is string inputName)
+                            {
+                                gate.Inputs.Add(ExternalInputs[inputName]);
+                            }
+                            else
+                            {
+                                // For unconnected inputs, assume false
+                                gate.Inputs.Add(false);
+                            }
                         }
                     }
                 }
-            }
 
-            // Compute CircuitGates first
-            foreach (var gate in Gates)
-            {
-                if (gate is CircuitGate)
+                // Compute CircuitGates first
+                foreach (var gate in Gates)
                 {
-                    gate.Compute();
+                    if (gate is CircuitGate)
+                    {
+                        gate.Compute();
+                    }
                 }
-            }
 
-            // Then compute LookupTableGates
-            foreach (var gate in Gates)
-            {
-                if (gate is LookupTableGate)
+                // Then compute LookupTableGates
+                foreach (var gate in Gates)
                 {
-                    gate.Compute();
+                    if (gate is LookupTableGate)
+                    {
+                        gate.Compute();
+                    }
                 }
-            }
 
-            // Then compute SubcircuitOutputGates and LookupTableOutputGates
-            foreach (var gate in Gates)
-            {
-                if (gate is SubcircuitOutputGate || gate is LookupTableOutputGate)
+                // Then compute other gates
+                foreach (var gate in Gates)
                 {
-                    gate.Compute();
+                    if (!(gate is CircuitGate) && !(gate is LookupTableGate) && !(gate is SubcircuitOutputGate) && !(gate is LookupTableOutputGate))
+                    {
+                        gate.Compute();
+                    }
                 }
-            }
 
-            // Then compute other gates
-            foreach (var gate in Gates)
-            {
-                if (!(gate is CircuitGate) && !(gate is LookupTableGate) && !(gate is SubcircuitOutputGate) && !(gate is LookupTableOutputGate))
+                // Then compute SubcircuitOutputGates and LookupTableOutputGates
+                foreach (var gate in Gates)
                 {
-                    gate.Compute();
+                    if (gate is SubcircuitOutputGate || gate is LookupTableOutputGate)
+                    {
+                        gate.Compute();
+                    }
                 }
             }
         }

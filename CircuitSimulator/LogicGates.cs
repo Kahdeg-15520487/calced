@@ -12,6 +12,11 @@ namespace CircuitSimulator
 
     public class AndGate : Gate
     {
+        public AndGate()
+        {
+            Outputs = [false];
+        }
+
         public override void Compute()
         {
             Outputs = [Inputs.All(i => i)];
@@ -20,6 +25,11 @@ namespace CircuitSimulator
 
     public class OrGate : Gate
     {
+        public OrGate()
+        {
+            Outputs = [false];
+        }
+
         public override void Compute()
         {
             Outputs = [Inputs.Any(i => i)];
@@ -28,6 +38,11 @@ namespace CircuitSimulator
 
     public class NotGate : Gate
     {
+        public NotGate()
+        {
+            Outputs = [false];
+        }
+
         public override void Compute()
         {
             if (Inputs.Count != 1) throw new InvalidOperationException("NOT gate must have exactly one input.");
@@ -37,6 +52,11 @@ namespace CircuitSimulator
 
     public class NandGate : Gate
     {
+        public NandGate()
+        {
+            Outputs = [false];
+        }
+
         public override void Compute()
         {
             Outputs = [!Inputs.All(i => i)];
@@ -45,6 +65,11 @@ namespace CircuitSimulator
 
     public class NorGate : Gate
     {
+        public NorGate()
+        {
+            Outputs = [false];
+        }
+
         public override void Compute()
         {
             Outputs = [!Inputs.Any(i => i)];
@@ -53,6 +78,11 @@ namespace CircuitSimulator
 
     public class XorGate : Gate
     {
+        public XorGate()
+        {
+            Outputs = [false];
+        }
+
         public override void Compute()
         {
             Outputs = [Inputs.Count(i => i) % 2 == 1];
@@ -61,6 +91,11 @@ namespace CircuitSimulator
 
     public class XnorGate : Gate
     {
+        public XnorGate()
+        {
+            Outputs = [false];
+        }
+
         public override void Compute()
         {
             Outputs = [Inputs.Count(i => i) % 2 == 0];
@@ -70,6 +105,11 @@ namespace CircuitSimulator
     public class DFlipFlop : Gate
     {
         private bool _q = false;
+
+        public DFlipFlop()
+        {
+            Outputs = [false];
+        }
 
         public override void Compute()
         {

@@ -81,10 +81,55 @@ namespace CircuitSimulator
 
             var dsl = File.ReadAllText(dslFile);
             var basePath = Path.GetDirectoryName(Path.GetFullPath(dslFile)) ?? ".";
-            var circuit = RegexParser.Parse(dsl, basePath, useNewParser: true);
+
+            Circuit circuit;
+            try
+            {
+                circuit = RegexParser.Parse(dsl, basePath, useNewParser: true);
+            }
+            catch (DSLInvalidSyntaxException ex)
+            {
+                Console.Error.WriteLine($"Syntax Error in '{dslFile}': {ex.Message}");
+                if (ex.Line > 0 && ex.Line <= dsl.Split('\n').Length)
+                {
+                    var lines = dsl.Split('\n');
+                    var errorLine = lines[ex.Line - 1];
+                    Console.Error.WriteLine(errorLine);
+                    if (ex.Column > 0 && ex.Column <= errorLine.Length + 1)
+                    {
+                        var caret = new string(' ', ex.Column - 1) + "^";
+                        Console.Error.WriteLine(caret);
+                    }
+                }
+                Console.Error.WriteLine("Hint: Check for missing commas, brackets, or incorrect keywords in the circuit definition.");
+                return;
+            }
+            catch (DSLInvalidGateException ex)
+            {
+                Console.Error.WriteLine($"Gate Error in '{dslFile}': {ex.Message}");
+                Console.Error.WriteLine("Hint: Ensure gate types are valid (e.g., AND, OR, Circuit) and parameters are correct.");
+                return;
+            }
+            catch (DSLInvalidConnectionException ex)
+            {
+                Console.Error.WriteLine($"Connection Error in '{dslFile}': {ex.Message}");
+                Console.Error.WriteLine("Hint: Verify connection syntax (e.g., source -> target) and that gates/ports exist.");
+                return;
+            }
+            catch (DSLImportException ex)
+            {
+                Console.Error.WriteLine($"Import Error in '{dslFile}': {ex.Message}");
+                Console.Error.WriteLine("Hint: Check that imported files exist and are valid.");
+                return;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Unexpected Error in '{dslFile}': {ex.Message}");
+                return;
+            }
 
             // Parse input values and ticks
-            int ticks = 3; // default
+            int ticks = 2; // default for combinational circuits
             for (int i = 1; i < args.Length; i++)
             {
                 var arg = args[i];
@@ -158,16 +203,110 @@ namespace CircuitSimulator
             // Output results
             Console.WriteLine($"Simulation Results (after {ticks} ticks):");
             Console.WriteLine("Inputs:");
+            
+            // Group inputs by base name for multi-bit display
+            var inputGroups = new Dictionary<string, List<(int index, bool value)>>();
             foreach (var kvp in circuit.ExternalInputs)
             {
-                Console.WriteLine($"  {kvp.Key}: {(kvp.Value ? 1 : 0)}");
+                var key = kvp.Key;
+                var inputValue = kvp.Value;
+                
+                // Check if it's an array input like "a[0]"
+                var bracketIndex = key.IndexOf('[');
+                if (bracketIndex > 0 && key.EndsWith(']'))
+                {
+                    var baseName = key.Substring(0, bracketIndex);
+                    var indexStr = key.Substring(bracketIndex + 1, key.Length - bracketIndex - 2);
+                    if (int.TryParse(indexStr, out var index))
+                    {
+                        if (!inputGroups.ContainsKey(baseName))
+                        {
+                            inputGroups[baseName] = new List<(int, bool)>();
+                        }
+                        inputGroups[baseName].Add((index, inputValue));
+                    }
+                    else
+                    {
+                        // Fallback for malformed array names
+                        Console.WriteLine($"  {key}: {(inputValue ? 1 : 0)}");
+                    }
+                }
+                else
+                {
+                    // Single-bit input
+                    Console.WriteLine($"  {key}: {(inputValue ? 1 : 0)}");
+                }
             }
+            
+            // Display grouped multi-bit inputs
+            foreach (var group in inputGroups)
+            {
+                var baseName = group.Key;
+                var bits = group.Value.OrderBy(x => x.index).Select(x => x.value).ToArray();
+                
+                // Convert bits to binary string (MSB first)
+                var binaryStr = string.Join("", bits.Reverse().Select(b => b ? "1" : "0"));
+                
+                Console.WriteLine($"  {baseName}: {binaryStr}");
+            }
+            
             Console.WriteLine("Outputs:");
+            
+            // Group outputs by base name for multi-bit display
+            var outputGroups = new Dictionary<string, List<(int index, bool value)>>();
             foreach (var kvp in circuit.ExternalOutputs)
             {
+                var key = kvp.Key;
                 var gate = kvp.Value;
                 var outputValue = gate?.Output ?? false;
-                Console.WriteLine($"  {kvp.Key}: {(outputValue ? 1 : 0)}");
+                
+                // Check if it's an array output like "sum[0]"
+                var bracketIndex = key.IndexOf('[');
+                if (bracketIndex > 0 && key.EndsWith(']'))
+                {
+                    var baseName = key.Substring(0, bracketIndex);
+                    var indexStr = key.Substring(bracketIndex + 1, key.Length - bracketIndex - 2);
+                    if (int.TryParse(indexStr, out var index))
+                    {
+                        if (!outputGroups.ContainsKey(baseName))
+                        {
+                            outputGroups[baseName] = new List<(int, bool)>();
+                        }
+                        outputGroups[baseName].Add((index, outputValue));
+                    }
+                    else
+                    {
+                        // Fallback for malformed array names
+                        Console.WriteLine($"  {key}: {(outputValue ? 1 : 0)}");
+                    }
+                }
+                else
+                {
+                    // Single-bit output
+                    Console.WriteLine($"  {key}: {(outputValue ? 1 : 0)}");
+                }
+            }
+            
+            // Display grouped multi-bit outputs
+            foreach (var group in outputGroups)
+            {
+                var baseName = group.Key;
+                var bits = group.Value.OrderBy(x => x.index).Select(x => x.value).ToArray();
+                
+                // Convert bits to binary string (MSB first)
+                var binaryStr = string.Join("", bits.Reverse().Select(b => b ? "1" : "0"));
+                
+                // Convert to decimal for display
+                var decimalValue = 0;
+                for (int i = 0; i < bits.Length; i++)
+                {
+                    if (bits[i])
+                    {
+                        decimalValue |= (1 << i);
+                    }
+                }
+                
+                Console.WriteLine($"  {baseName}: {binaryStr}");
             }
         }
     }

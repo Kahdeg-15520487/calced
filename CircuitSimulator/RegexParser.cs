@@ -9,8 +9,21 @@ namespace CircuitSimulator
     // Custom exception classes for DSL parsing errors
     public class DSLParseException : Exception
     {
+        public int Line { get; }
+        public int Column { get; }
+
         public DSLParseException(string message) : base(message) { }
         public DSLParseException(string message, Exception innerException) : base(message, innerException) { }
+        public DSLParseException(int line, int column, string message) : base(message)
+        {
+            Line = line;
+            Column = column;
+        }
+        public DSLParseException(int line, int column, string message, Exception innerException) : base(message, innerException)
+        {
+            Line = line;
+            Column = column;
+        }
     }
 
     public class DSLImportException : DSLParseException
@@ -21,8 +34,10 @@ namespace CircuitSimulator
 
     public class DSLInvalidSyntaxException : DSLParseException
     {
-        public DSLInvalidSyntaxException(string line, string reason)
-            : base($"Invalid syntax in line '{line}': {reason}") { }
+        public DSLInvalidSyntaxException(int line, int column, string reason)
+            : base(line, column, $"Invalid syntax at line {line}, column {column}: {reason}")
+        {
+        }
     }
 
     public class DSLInvalidGateException : DSLParseException
@@ -123,7 +138,7 @@ namespace CircuitSimulator
                     var match = Regex.Match(lines[i], @"import ""([^""]+)""");
                     if (!match.Success)
                     {
-                        throw new DSLInvalidSyntaxException(lines[i], "Invalid import statement. Expected 'import \"filename\"'");
+                        throw new DSLInvalidSyntaxException(0, 0, "Invalid import statement. Expected 'import \"filename\"'");
                     }
                     var importFile = match.Groups[1].Value;
                     try
@@ -149,7 +164,7 @@ namespace CircuitSimulator
                     var match = Regex.Match(lines[i], @"circuit (\w+)");
                     if (!match.Success)
                     {
-                        throw new DSLInvalidSyntaxException(lines[i], "Invalid circuit declaration. Expected 'circuit <name>'");
+                        throw new DSLInvalidSyntaxException(0, 0, "Invalid circuit declaration. Expected 'circuit <name>'");
                     }
                     var currentCircuitName = match.Groups[1].Value;
                     var circuit = new Circuit();
@@ -171,7 +186,7 @@ namespace CircuitSimulator
                                     var inputMatch = Regex.Match(input, @"(\w+)\[(\d+)\]");
                                     if (!inputMatch.Success)
                                     {
-                                        throw new DSLInvalidSyntaxException(input, "Invalid array input syntax. Expected 'name[size]'");
+                                        throw new DSLInvalidSyntaxException(0, 0, "Invalid array input syntax. Expected 'name[size]'");
                                     }
                                     var name = inputMatch.Groups[1].Value;
                                     try
@@ -184,7 +199,7 @@ namespace CircuitSimulator
                                     }
                                     catch (FormatException)
                                     {
-                                        throw new DSLInvalidSyntaxException(input, "Invalid size in array input. Expected integer");
+                                        throw new DSLInvalidSyntaxException(0, 0, "Invalid size in array input. Expected integer");
                                     }
                                 }
                                 else
@@ -519,14 +534,14 @@ namespace CircuitSimulator
                                 else if (outputStr[j] == '0')
                                     output[j] = false;
                                 else
-                                    throw new DSLInvalidSyntaxException(lines[i], $"Invalid output bit '{outputStr[j]}'. Expected '0' or '1'");
+                                    throw new DSLInvalidSyntaxException(0, 0, $"Invalid output bit '{outputStr[j]}'. Expected '0' or '1'");
                             }
                             
                             table[input] = output;
                         }
                         else if (!string.IsNullOrWhiteSpace(lines[i]) && lines[i] != "}")
                         {
-                            throw new DSLInvalidSyntaxException(lines[i], "Invalid lookup table entry. Expected 'input -> output'");
+                            throw new DSLInvalidSyntaxException(0, 0, "Invalid lookup table entry. Expected 'input -> output'");
                         }
                         i++;
                     }
@@ -535,7 +550,7 @@ namespace CircuitSimulator
                 }
                 else if (!string.IsNullOrWhiteSpace(lines[i]) && lines[i] != "}")
                 {
-                    throw new DSLInvalidSyntaxException(lines[i], "Invalid lookup table definition. Expected 'name = {'");
+                    throw new DSLInvalidSyntaxException(0, 0, "Invalid lookup table definition. Expected 'name = {'");
                 }
                 i++;
             }

@@ -35,7 +35,7 @@ namespace CircuitSimulator
                 }
                 else
                 {
-                    throw new DSLInvalidSyntaxException($"Unexpected token: {Peek()}", $"Expected 'import' or 'circuit' at line {Peek().Line}, column {Peek().Column}");
+                    throw new DSLInvalidSyntaxException(Peek().Line, Peek().Column, "Expected 'import' or 'circuit'");
                 }
             }
 
@@ -101,7 +101,7 @@ namespace CircuitSimulator
                 }
                 else
                 {
-                    throw new DSLInvalidSyntaxException($"Unexpected token in circuit: {Peek()}", $"Expected block keyword at line {Peek().Line}, column {Peek().Column}");
+                    throw new DSLInvalidSyntaxException(Peek().Line, Peek().Column, "Expected block keyword");
                 }
             }
 
@@ -157,8 +157,25 @@ namespace CircuitSimulator
             {
                 Consume(TokenType.IDENTIFIER, "Expected output name");
                 string name = Previous().Value;
-                circuit.ExternalOutputs[name] = null;
-                circuit.OutputNames.Add(name);
+
+                if (Match(TokenType.LBRACKET))
+                {
+                    Consume(TokenType.NUMBER, "Expected number in array size");
+                    int size = int.Parse(Previous().Value);
+                    Consume(TokenType.RBRACKET, "Expected ']' after array size");
+
+                    for (int i = 0; i < size; i++)
+                    {
+                        string indexedName = $"{name}[{i}]";
+                        circuit.ExternalOutputs[indexedName] = null;
+                        circuit.OutputNames.Add(indexedName);
+                    }
+                }
+                else
+                {
+                    circuit.ExternalOutputs[name] = null;
+                    circuit.OutputNames.Add(name);
+                }
 
                 if (!Check(TokenType.RBRACE))
                 {
@@ -264,7 +281,7 @@ namespace CircuitSimulator
                         else if (outputStr[i] == '0')
                             output[i] = false;
                         else
-                            throw new DSLInvalidSyntaxException($"Invalid output bit '{outputStr[i]}'", $"Expected '0' or '1' in output pattern");
+                            throw new DSLInvalidSyntaxException(0, 0, $"Invalid output bit '{outputStr[i]}'. Expected '0' or '1'");
                     }
 
                     table[input] = output;
@@ -518,7 +535,7 @@ namespace CircuitSimulator
                 Consume(TokenType.IDENTIFIER, "Expected 'out' after dot");
                 if (Previous().Value != "out")
                 {
-                    throw new DSLInvalidSyntaxException("Expected 'out' after dot in source", $"Found '{Previous().Value}' at line {Previous().Line}, column {Previous().Column}");
+                    throw new DSLInvalidSyntaxException(Previous().Line, Previous().Column, "Expected 'out' after dot in source");
                 }
 
                 if (Match(TokenType.LBRACKET))
@@ -548,12 +565,21 @@ namespace CircuitSimulator
             Consume(TokenType.IDENTIFIER, "Expected target identifier");
             string target = Previous().Value;
 
+            // Handle array notation like sum[0]
+            if (Match(TokenType.LBRACKET))
+            {
+                Consume(TokenType.NUMBER, "Expected array index");
+                string index = Previous().Value;
+                Consume(TokenType.RBRACKET, "Expected ']' after array index");
+                target += $"[{index}]";
+            }
+
             if (Match(TokenType.DOT))
             {
                 Consume(TokenType.IDENTIFIER, "Expected 'in' after dot");
                 if (Previous().Value != "in")
                 {
-                    throw new DSLInvalidSyntaxException("Expected 'in' after dot in target", $"Found '{Previous().Value}' at line {Previous().Line}, column {Previous().Column}");
+                    throw new DSLInvalidSyntaxException(Previous().Line, Previous().Column, "Expected 'in' after dot in target");
                 }
 
                 if (Match(TokenType.LBRACKET))
@@ -573,7 +599,7 @@ namespace CircuitSimulator
                 }
                 else
                 {
-                    throw new DSLInvalidSyntaxException("Expected '[' or '.' after 'in' in target", $"Found '{Peek()}' at line {Peek().Line}, column {Peek().Column}");
+                    throw new DSLInvalidSyntaxException(Peek().Line, Peek().Column, "Expected '[' or '.' after 'in' in target");
                 }
             }
 
@@ -597,7 +623,7 @@ namespace CircuitSimulator
                 return Advance();
             }
 
-            throw new DSLInvalidSyntaxException(message, $"Expected {type} at line {Peek().Line}, column {Peek().Column}");
+            throw new DSLInvalidSyntaxException(Peek().Line, Peek().Column, $"Expected {type}");
         }
 
         private bool Check(TokenType type)
