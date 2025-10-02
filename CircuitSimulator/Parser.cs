@@ -353,11 +353,11 @@ namespace CircuitSimulator
                 Consume(TokenType.ARROW, "Expected '->' in connection");
 
                 // Parse target
-                string target = ParseTarget();
+                var (target, targetLine, targetColumn) = ParseTarget();
 
                 // Parse the connection: source -> target
                 // For now, implement basic connection parsing
-                ParseConnection(circuit, source, target);
+                ParseConnection(circuit, source, target, targetLine, targetColumn);
 
                 if (!Check(TokenType.RBRACE))
                 {
@@ -369,7 +369,7 @@ namespace CircuitSimulator
             Consume(TokenType.RBRACE, "Expected '}' after connections");
         }
 
-        private void ParseConnection(Circuit circuit, string source, string target)
+        private void ParseConnection(Circuit circuit, string source, string target, int targetLine, int targetColumn)
         {
             object sourceObj;
             Gate? targetGate = null;
@@ -546,7 +546,7 @@ namespace CircuitSimulator
             }
             else
             {
-                throw new DSLInvalidConnectionException($"{source} -> {target}", $"Unknown target: {target}");
+                throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Unknown target: {target}");
             }
         }
 
@@ -594,10 +594,11 @@ namespace CircuitSimulator
             return source;
         }
 
-        private string ParseTarget()
+        private (string target, int line, int column) ParseTarget()
         {
             Consume(TokenType.IDENTIFIER, "Expected target identifier");
-            string target = Previous().Value;
+            var targetToken = Previous();
+            string target = targetToken.Value;
 
             // Handle array notation like sum[0]
             if (Match(TokenType.LBRACKET))
@@ -637,7 +638,7 @@ namespace CircuitSimulator
                 }
             }
 
-            return target;
+            return (target, targetToken.Line, targetToken.Column);
         }
 
         private bool Match(TokenType type)
@@ -650,6 +651,34 @@ namespace CircuitSimulator
             return false;
         }
 
+        private string TokenTypeToString(TokenType type)
+        {
+            switch (type)
+            {
+                case TokenType.LBRACE: return "{";
+                case TokenType.RBRACE: return "}";
+                case TokenType.LBRACKET: return "[";
+                case TokenType.RBRACKET: return "]";
+                case TokenType.LPAREN: return "(";
+                case TokenType.RPAREN: return ")";
+                case TokenType.ARROW: return "->";
+                case TokenType.COMMA: return ",";
+                case TokenType.EQUALS: return "=";
+                case TokenType.DOT: return ".";
+                case TokenType.IDENTIFIER: return "identifier";
+                case TokenType.STRING: return "string";
+                case TokenType.NUMBER: return "number";
+                case TokenType.CIRCUIT: return "circuit";
+                case TokenType.INPUTS: return "inputs";
+                case TokenType.OUTPUTS: return "outputs";
+                case TokenType.GATES: return "gates";
+                case TokenType.CONNECTIONS: return "connections";
+                case TokenType.LOOKUP_TABLES: return "lookup_tables";
+                case TokenType.IMPORT: return "import";
+                default: return type.ToString().ToLower();
+            }
+        }
+
         private Token Consume(TokenType type, string message)
         {
             if (Check(type))
@@ -657,7 +686,12 @@ namespace CircuitSimulator
                 return Advance();
             }
 
-            throw new DSLInvalidSyntaxException(Peek().Line, Peek().Column, $"Expected {type}");
+            // Report error at the position of the previous token + its length
+            var prevToken = Previous();
+            int errorLine = prevToken.Line;
+            int errorColumn = prevToken.Column + prevToken.Value.Length;
+
+            throw new DSLInvalidSyntaxException(errorLine, errorColumn, $"Expected '{TokenTypeToString(type)}'");
         }
 
         private bool Check(TokenType type)

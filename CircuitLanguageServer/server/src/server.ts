@@ -151,8 +151,11 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 		// Path to the bundled CircuitSimulator.exe
 		const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
 		
+		// Get the directory of the original document for import resolution
+		const documentDir = path.dirname(textDocument.uri.replace('file://', ''));
+		
 		await new Promise<void>((resolve, reject) => {
-			execFile(simulatorPath, [tempFile, '--verify'], (error, stdout, stderr) => {
+			execFile(simulatorPath, [tempFile, '--verify', `--base-path=${documentDir}`], (error, stdout, stderr) => {
 				try {
 					if (stdout) {
 						const parsedDiagnostics = JSON.parse(stdout);

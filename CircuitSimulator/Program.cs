@@ -86,6 +86,18 @@ namespace CircuitSimulator
 
             var dslFile = args[0];
             var isVerifyMode = args.Contains("--verify");
+            
+            // Parse --base-path argument
+            string? customBasePath = null;
+            for (int i = 1; i < args.Length; i++)
+            {
+                if (args[i].StartsWith("--base-path="))
+                {
+                    customBasePath = args[i].Substring("--base-path=".Length);
+                    break;
+                }
+            }
+            
             if (!File.Exists(dslFile))
             {
                 Console.WriteLine($"File not found: {dslFile}");
@@ -93,7 +105,7 @@ namespace CircuitSimulator
             }
 
             var dsl = File.ReadAllText(dslFile);
-            var basePath = Path.GetDirectoryName(Path.GetFullPath(dslFile)) ?? ".";
+            var basePath = customBasePath ?? Path.GetDirectoryName(Path.GetFullPath(dslFile)) ?? ".";
 
             if (isVerifyMode)
             {
@@ -110,23 +122,26 @@ namespace CircuitSimulator
                 }
                 catch (DSLParseException ex)
                 {
-                    // Extract just the error message without line/column info
+                    // Extract the specific error message
                     string message = ex.Message;
-                    if (message.Contains(" at line ") && message.Contains(", column "))
+                    
+                    // For syntax errors with position info, extract just the reason
+                    if (message.Contains("Invalid syntax at line ") && message.Contains(": "))
                     {
-                        // Remove the line/column prefix from the message
-                        int atIndex = message.IndexOf(" at line ");
-                        if (atIndex > 0)
+                        // Extract the part after "Invalid syntax at line X, column Y: "
+                        int colonIndex = message.LastIndexOf(": ");
+                        if (colonIndex > 0)
                         {
-                            message = message.Substring(0, atIndex);
+                            message = message.Substring(colonIndex + 2);
                         }
                     }
+                    // For other errors (connection, gate, etc.), use the full message
 
                     diagnostics.Add(new DiagnosticInfo
                     {
                         Message = message,
-                        Line = ex.Line - 1, // Convert to 0-based for LSP
-                        Column = ex.Column - 1, // Convert to 0-based for LSP
+                        Line = ex.Line > 0 ? ex.Line - 1 : 0, // Convert to 0-based for LSP, default to 0 if no position
+                        Column = ex.Column > 0 ? ex.Column - 1 : 0, // Convert to 0-based for LSP, default to 0 if no position
                         Length = Math.Max(1, message.Length / 10), // Approximate length
                         Severity = "error"
                     });
@@ -205,6 +220,12 @@ namespace CircuitSimulator
                 var arg = args[i];
                 if (arg.StartsWith("--"))
                 {
+                    // Skip known flags
+                    if (arg == "--verify" || arg.StartsWith("--base-path="))
+                    {
+                        continue;
+                    }
+                    
                     var parts = arg.Substring(2).Split('=');
                     if (parts.Length == 2)
                     {

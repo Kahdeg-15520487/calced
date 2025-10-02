@@ -3,6 +3,11 @@
   "displayName": "Circuit Language Server",
   "description": "Language server for Circuit DSL",
   "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kahdeg-15520487/calced.git"
+  },
+  "license": "MIT",
   "engines": {
     "vscode": "^1.74.0"
   },

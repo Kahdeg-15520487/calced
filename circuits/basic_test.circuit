@@ -5,7 +5,7 @@ circuit BasicTest {
         and1 = AND()
     }
     connections {
-        a -> and1.in[0
+        a -> and1.in[0]
         b -> and1.in[1]
         and1.out -> out
     }
