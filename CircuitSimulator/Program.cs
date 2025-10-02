@@ -15,6 +15,14 @@ namespace CircuitSimulator
         public string Severity { get; set; } = "error";
     }
 
+    public class CircuitInfo
+    {
+        public string Name { get; set; } = "";
+        public List<string> Inputs { get; set; } = new List<string>();
+        public List<string> Outputs { get; set; } = new List<string>();
+        public string FilePath { get; set; } = "";
+    }
+
     class Program
     {
         static bool[] ParseMultiBitValue(string valueStr)
@@ -76,16 +84,18 @@ namespace CircuitSimulator
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("Usage: CircuitSimulator <dsl-file> [--<input>=<value>]... [--ticks=N] [--verify]");
+                Console.WriteLine("Usage: CircuitSimulator <dsl-file> [--<input>=<value>]... [--ticks=N] [--verify] [--info]");
                 Console.WriteLine("Examples:");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --ticks=10");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --b=false --ticks=5");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --verify  # For LSP validation");
+                Console.WriteLine("  CircuitSimulator circuit.circuit --info    # For LSP hover info");
                 return;
             }
 
             var dslFile = args[0];
             var isVerifyMode = args.Contains("--verify");
+            var isInfoMode = args.Contains("--info");
             
             // Parse --base-path argument
             string? customBasePath = null;
@@ -159,6 +169,39 @@ namespace CircuitSimulator
                 }
 
                 Console.WriteLine(JsonSerializer.Serialize(diagnostics, new JsonSerializerOptions { WriteIndented = false }));
+                return;
+            }
+
+            if (isInfoMode)
+            {
+                // LSP info mode - return JSON circuit definitions
+                var circuitInfos = new List<CircuitInfo>();
+
+                try
+                {
+                    var lexer = new Lexer(dsl);
+                    var tokens = lexer.Tokenize().ToList();
+                    var parser = new Parser(tokens, basePath);
+                    var circuits = parser.ParseCircuits();
+                    
+                    foreach (var circuitEntry in circuits)
+                    {
+                        circuitInfos.Add(new CircuitInfo
+                        {
+                            Name = circuitEntry.Key,
+                            Inputs = circuitEntry.Value.InputNames,
+                            Outputs = circuitEntry.Value.OutputNames,
+                            FilePath = dslFile
+                        });
+                    }
+                }
+                catch (Exception)
+                {
+                    // If parsing fails, return empty list
+                    circuitInfos = new List<CircuitInfo>();
+                }
+
+                Console.WriteLine(JsonSerializer.Serialize(circuitInfos, new JsonSerializerOptions { WriteIndented = false }));
                 return;
             }
 

@@ -20,6 +20,15 @@ import {
 import { execFile } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as url from 'url';
+
+// Circuit information for hover tooltips
+interface CircuitInfo {
+	name: string;
+	inputs: string[];
+	outputs: string[];
+	filePath: string;
+}
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -27,6 +36,9 @@ const connection = createConnection(ProposedFeatures.all);
 
 // Create a simple text document manager.
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
+
+// Map to store circuit definitions for hover tooltips
+const circuitDefinitions: Map<string, CircuitInfo> = new Map();
 
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
@@ -136,6 +148,7 @@ documents.onDidChangeContent((change: any) => {
 
 async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 	connection.console.log(`Circuit Language Server: Validating document ${textDocument.uri}`);
+	
 	// Save the document to a temporary file for CircuitSimulator to parse
 	const tempDir = path.join(__dirname, '..', '..', 'temp');
 	if (!fs.existsSync(tempDir)) {
@@ -152,7 +165,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 		const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
 		
 		// Get the directory of the original document for import resolution
-		const documentDir = path.dirname(textDocument.uri.replace('file://', ''));
+		const documentDir = path.dirname(url.fileURLToPath(textDocument.uri));
 		
 		await new Promise<void>((resolve, reject) => {
 			execFile(simulatorPath, [tempFile, '--verify', `--base-path=${documentDir}`], (error, stdout, stderr) => {
@@ -377,6 +390,52 @@ connection.onCompletionResolve(
 	}
 );
 
+// Function to parse circuit definitions from a file using C# program
+function parseCircuitDefinitions(filePath: string, basePath: string): void {
+	try {
+		// Path to the bundled CircuitSimulator.exe
+		const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
+		
+		// Create a temporary file with the circuit content
+		const tempDir = path.join(__dirname, '..', '..', 'temp');
+		if (!fs.existsSync(tempDir)) {
+			fs.mkdirSync(tempDir, { recursive: true });
+		}
+		
+		const tempFile = path.join(tempDir, `info_${Date.now()}.circuit`);
+		const content = fs.readFileSync(filePath, 'utf8');
+		fs.writeFileSync(tempFile, content);
+
+		// Call C# program with --info mode
+		execFile(simulatorPath, [tempFile, '--info', `--base-path=${basePath}`], (error, stdout, stderr) => {
+			try {
+				if (stdout) {
+					const circuitInfos = JSON.parse(stdout);
+					for (const info of circuitInfos) {
+						circuitDefinitions.set(info.Name, {
+							name: info.Name,
+							inputs: info.Inputs,
+							outputs: info.Outputs,
+							filePath: info.FilePath
+						});
+					}
+				}
+			} catch (parseError) {
+				// Silently ignore parse errors for hover functionality
+			} finally {
+				// Clean up temp file
+				try {
+					fs.unlinkSync(tempFile);
+				} catch (cleanupError) {
+					// Ignore cleanup errors
+				}
+			}
+		});
+	} catch (error) {
+		// Silently ignore errors for hover functionality
+	}
+}
+
 // Hover support for showing information about symbols
 connection.onHover(
 	(textDocumentPosition: TextDocumentPositionParams) => {
@@ -423,6 +482,90 @@ connection.onHover(
 					value: info
 				}
 			};
+		}
+
+		// Check if hovering over a circuit name in Circuit() calls
+		// First check if it's already in our cached definitions
+		let circuitInfo = circuitDefinitions.get(word);
+		if (circuitInfo) {
+			const inputsStr = circuitInfo.inputs.join(', ');
+			const outputsStr = circuitInfo.outputs.join(', ');
+			const hoverText = `**Circuit: ${circuitInfo.name}**\n\n` +
+				`**Inputs:** ${inputsStr || 'none'}\n\n` +
+				`**Outputs:** ${outputsStr || 'none'}\n\n` +
+				`*Defined in: ${path.basename(circuitInfo.filePath)}*`;
+			return {
+				contents: {
+					kind: 'markdown',
+					value: hoverText
+				}
+			};
+		}
+
+		// If not found, try to get circuit info by calling C# program
+		try {
+			const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
+			const documentDir = path.dirname(documentPath);
+			
+			// Path to the bundled CircuitSimulator.exe
+			const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
+			
+			// Create a temporary file with the circuit content
+			const tempDir = path.join(__dirname, '..', '..', 'temp');
+			if (!fs.existsSync(tempDir)) {
+				fs.mkdirSync(tempDir, { recursive: true });
+			}
+			
+			const tempFile = path.join(tempDir, `hover_${Date.now()}.circuit`);
+			fs.writeFileSync(tempFile, text);
+
+			// Call C# program with --info mode synchronously
+			const { execFileSync } = require('child_process');
+			const stdout = execFileSync(simulatorPath, [tempFile, '--info', `--base-path=${documentDir}`], { encoding: 'utf8' });
+			
+			if (stdout) {
+				const circuitInfos = JSON.parse(stdout);
+				const foundCircuit = circuitInfos.find((info: any) => info.Name === word);
+				if (foundCircuit) {
+					const inputsStr = foundCircuit.Inputs.join(', ');
+					const outputsStr = foundCircuit.Outputs.join(', ');
+					const hoverText = `**Circuit: ${foundCircuit.Name}**\n\n` +
+						`**Inputs:** ${inputsStr || 'none'}\n\n` +
+						`**Outputs:** ${outputsStr || 'none'}\n\n` +
+						`*Defined in: ${path.basename(foundCircuit.FilePath)}*`;
+					
+					// Cache the result
+					circuitDefinitions.set(word, {
+						name: foundCircuit.Name,
+						inputs: foundCircuit.Inputs,
+						outputs: foundCircuit.Outputs,
+						filePath: foundCircuit.FilePath
+					});
+					
+					// Clean up temp file
+					try {
+						fs.unlinkSync(tempFile);
+					} catch (cleanupError) {
+						// Ignore cleanup errors
+					}
+					
+					return {
+						contents: {
+							kind: 'markdown',
+							value: hoverText
+						}
+					};
+				}
+			}
+			
+			// Clean up temp file
+			try {
+				fs.unlinkSync(tempFile);
+			} catch (cleanupError) {
+				// Ignore cleanup errors
+			}
+		} catch (error) {
+			// Silently ignore errors for hover functionality
 		}
 
 		return null;
