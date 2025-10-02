@@ -121,7 +121,7 @@ namespace CircuitSimulator
             sb.AppendLine("Gates:");
             foreach (var kvp in NamedGates)
             {
-                var typeName = RegexParser.TypeToName.TryGetValue(kvp.Value.GetType(), out var name) ? name : kvp.Value.GetType().Name;
+                var typeName = Parser.TypeToName.TryGetValue(kvp.Value.GetType(), out var name) ? name : kvp.Value.GetType().Name;
                 sb.AppendLine($"  {kvp.Key}: {typeName}");
             }
             sb.AppendLine("Connections:");

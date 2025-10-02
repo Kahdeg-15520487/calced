@@ -4,6 +4,9 @@ circuit BasicTest {
     gates {
         and1 = AND()
     }
+    lookup_tables {
+
+    }
     connections {
         a -> and1.in[0]
         b -> and1.in[1]

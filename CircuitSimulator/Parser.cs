@@ -7,6 +7,40 @@ namespace CircuitSimulator
 {
     public class Parser
     {
+        internal static readonly Dictionary<Type, string> TypeToName = new Dictionary<Type, string>
+        {
+            [typeof(AndGate)] = "AND",
+            [typeof(OrGate)] = "OR",
+            [typeof(NotGate)] = "NOT",
+            [typeof(NandGate)] = "NAND",
+            [typeof(NorGate)] = "NOR",
+            [typeof(XorGate)] = "XOR",
+            [typeof(XnorGate)] = "XNOR",
+            [typeof(DFlipFlop)] = "DFF"
+        };
+
+        internal static readonly Dictionary<string, Func<Gate>> GateFactory = new Dictionary<string, Func<Gate>>
+        {
+            ["AND"] = () => new AndGate(),
+            ["OR"] = () => new OrGate(),
+            ["NOT"] = () => new NotGate(),
+            ["NAND"] = () => new NandGate(),
+            ["NOR"] = () => new NorGate(),
+            ["XOR"] = () => new XorGate(),
+            ["XNOR"] = () => new XnorGate(),
+            ["DFF"] = () => new DFlipFlop()
+        };
+
+        internal static readonly Dictionary<string, Dictionary<string, bool[]>> LookupTables = new Dictionary<string, Dictionary<string, bool[]>>();
+
+        internal static Gate CreateLookupTableGate(string tableName)
+        {
+            if (!LookupTables.TryGetValue(tableName, out var table))
+            {
+                throw new DSLInvalidGateException(tableName, $"Lookup table '{tableName}' not found");
+            }
+            return new LookupTableGate(table);
+        }
         private readonly List<Token> _tokens;
         private int _current;
         private readonly string _basePath;
@@ -222,7 +256,7 @@ namespace CircuitSimulator
                     string tableName = Previous().Value;
                     Consume(TokenType.RPAREN, "Expected ')' after table name");
 
-                    gate = RegexParser.CreateLookupTableGate(tableName);
+                    gate = CreateLookupTableGate(tableName);
                 }
                 else
                 {
@@ -230,7 +264,7 @@ namespace CircuitSimulator
                     Consume(TokenType.LPAREN, "Expected '(' after gate type");
                     Consume(TokenType.RPAREN, "Expected ')' after gate type");
 
-                    if (!RegexParser.GateFactory.TryGetValue(gateType, out var factory))
+                    if (!GateFactory.TryGetValue(gateType, out var factory))
                     {
                         throw new DSLInvalidGateException(gateName, $"Unknown gate type '{gateType}'");
                     }
@@ -293,7 +327,7 @@ namespace CircuitSimulator
                     }
                 }
 
-                RegexParser.LookupTables[tableName] = table;
+                LookupTables[tableName] = table;
 
                 Consume(TokenType.RBRACE, "Expected '}' after table entries");
 

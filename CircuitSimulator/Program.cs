@@ -20,7 +20,7 @@ namespace CircuitSimulator
         static bool[] ParseMultiBitValue(string valueStr)
         {
             string binaryStr;
-            
+
             if (valueStr.StartsWith("b"))
             {
                 // Binary: b10101
@@ -46,17 +46,17 @@ namespace CircuitSimulator
                 var decimalValue = int.Parse(valueStr);
                 binaryStr = Convert.ToString(decimalValue, 2);
             }
-            
+
             // Convert binary string to bool array (LSB first)
             var bits = new bool[binaryStr.Length];
             for (int i = 0; i < binaryStr.Length; i++)
             {
                 bits[i] = binaryStr[binaryStr.Length - 1 - i] == '1';
             }
-            
+
             return bits;
         }
-        
+
         static void SetMultiBitInput(Circuit circuit, string inputName, bool[] bits)
         {
             for (int i = 0; i < bits.Length; i++)
@@ -99,20 +99,35 @@ namespace CircuitSimulator
             {
                 // LSP verification mode - return JSON diagnostics
                 var diagnostics = new List<DiagnosticInfo>();
-                
+
                 try
                 {
-                    RegexParser.Parse(dsl, basePath, useNewParser: true);
+                    var lexer = new Lexer(dsl);
+                    var tokens = lexer.Tokenize().ToList();
+                    var parser = new Parser(tokens, basePath);
+                    var circuits = parser.ParseCircuits();
                     // If parsing succeeds, no diagnostics
                 }
                 catch (DSLParseException ex)
                 {
+                    // Extract just the error message without line/column info
+                    string message = ex.Message;
+                    if (message.Contains(" at line ") && message.Contains(", column "))
+                    {
+                        // Remove the line/column prefix from the message
+                        int atIndex = message.IndexOf(" at line ");
+                        if (atIndex > 0)
+                        {
+                            message = message.Substring(0, atIndex);
+                        }
+                    }
+
                     diagnostics.Add(new DiagnosticInfo
                     {
-                        Message = ex.Message,
-                        Line = ex.Line - 1, // Convert to 0-based
-                        Column = ex.Column - 1, // Convert to 0-based
-                        Length = Math.Max(1, ex.Message.Length / 10), // Approximate length
+                        Message = message,
+                        Line = ex.Line - 1, // Convert to 0-based for LSP
+                        Column = ex.Column - 1, // Convert to 0-based for LSP
+                        Length = Math.Max(1, message.Length / 10), // Approximate length
                         Severity = "error"
                     });
                 }
@@ -136,7 +151,11 @@ namespace CircuitSimulator
             Circuit circuit;
             try
             {
-                circuit = RegexParser.Parse(dsl, basePath, useNewParser: true);
+                var lexer = new Lexer(dsl);
+                var tokens = lexer.Tokenize().ToList();
+                var parser = new Parser(tokens, basePath);
+                var circuits = parser.ParseCircuits();
+                circuit = circuits.LastOrDefault().Value;
             }
             catch (DSLInvalidSyntaxException ex)
             {
@@ -254,14 +273,14 @@ namespace CircuitSimulator
             // Output results
             Console.WriteLine($"Simulation Results (after {ticks} ticks):");
             Console.WriteLine("Inputs:");
-            
+
             // Group inputs by base name for multi-bit display
             var inputGroups = new Dictionary<string, List<(int index, bool value)>>();
             foreach (var kvp in circuit.ExternalInputs)
             {
                 var key = kvp.Key;
                 var inputValue = kvp.Value;
-                
+
                 // Check if it's an array input like "a[0]"
                 var bracketIndex = key.IndexOf('[');
                 if (bracketIndex > 0 && key.EndsWith(']'))
@@ -288,21 +307,21 @@ namespace CircuitSimulator
                     Console.WriteLine($"  {key}: {(inputValue ? 1 : 0)}");
                 }
             }
-            
+
             // Display grouped multi-bit inputs
             foreach (var group in inputGroups)
             {
                 var baseName = group.Key;
                 var bits = group.Value.OrderBy(x => x.index).Select(x => x.value).ToArray();
-                
+
                 // Convert bits to binary string (MSB first)
                 var binaryStr = string.Join("", bits.Reverse().Select(b => b ? "1" : "0"));
-                
+
                 Console.WriteLine($"  {baseName}: {binaryStr}");
             }
-            
+
             Console.WriteLine("Outputs:");
-            
+
             // Group outputs by base name for multi-bit display
             var outputGroups = new Dictionary<string, List<(int index, bool value)>>();
             foreach (var kvp in circuit.ExternalOutputs)
@@ -310,7 +329,7 @@ namespace CircuitSimulator
                 var key = kvp.Key;
                 var gate = kvp.Value;
                 var outputValue = gate?.Output ?? false;
-                
+
                 // Check if it's an array output like "sum[0]"
                 var bracketIndex = key.IndexOf('[');
                 if (bracketIndex > 0 && key.EndsWith(']'))
@@ -337,16 +356,16 @@ namespace CircuitSimulator
                     Console.WriteLine($"  {key}: {(outputValue ? 1 : 0)}");
                 }
             }
-            
+
             // Display grouped multi-bit outputs
             foreach (var group in outputGroups)
             {
                 var baseName = group.Key;
                 var bits = group.Value.OrderBy(x => x.index).Select(x => x.value).ToArray();
-                
+
                 // Convert bits to binary string (MSB first)
                 var binaryStr = string.Join("", bits.Reverse().Select(b => b ? "1" : "0"));
-                
+
                 // Convert to decimal for display
                 var decimalValue = 0;
                 for (int i = 0; i < bits.Length; i++)
@@ -356,7 +375,7 @@ namespace CircuitSimulator
                         decimalValue |= (1 << i);
                     }
                 }
-                
+
                 Console.WriteLine($"  {baseName}: {binaryStr}");
             }
         }

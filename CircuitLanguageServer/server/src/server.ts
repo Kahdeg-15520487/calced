@@ -33,6 +33,7 @@ let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
 
 connection.onInitialize((params: InitializeParams) => {
+	connection.console.log('Circuit Language Server: Initializing...');
 	const capabilities = params.capabilities;
 
 	// Does the client support the `workspace/configuration` request?
@@ -54,8 +55,11 @@ connection.onInitialize((params: InitializeParams) => {
 			textDocumentSync: TextDocumentSyncKind.Incremental,
 			// Tell the client that this server supports code completion.
 			completionProvider: {
-				resolveProvider: true
-			}
+				resolveProvider: true,
+				triggerCharacters: ['.', '-', '>', '=']
+			},
+			// Enable hover support
+			hoverProvider: true
 		}
 	};
 	if (hasWorkspaceFolderCapability) {
@@ -69,6 +73,7 @@ connection.onInitialize((params: InitializeParams) => {
 });
 
 connection.onInitialized(() => {
+	connection.console.log('Circuit Language Server: Initialized successfully!');
 	if (hasConfigurationCapability) {
 		// Register for all configuration changes.
 		connection.client.register(DidChangeConfigurationNotification.type, undefined);
@@ -89,7 +94,7 @@ let globalSettings: ExampleSettings = defaultSettings;
 // Cache the settings of all open documents
 const documentSettings: Map<string, Thenable<ExampleSettings>> = new Map();
 
-connection.onDidChangeConfiguration(change => {
+connection.onDidChangeConfiguration((change: any) => {
 	if (hasConfigurationCapability) {
 		// Reset all cached document settings
 		documentSettings.clear();
@@ -119,17 +124,18 @@ function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
 }
 
 // Only keep settings for open documents
-documents.onDidClose(e => {
+documents.onDidClose((e: any) => {
 	documentSettings.delete(e.document.uri);
 });
 
 // The content of a text document has changed. This event is emitted
 // when the text document first opened or when its content has changed.
-documents.onDidChangeContent(change => {
+documents.onDidChangeContent((change: any) => {
 	validateTextDocument(change.document);
 });
 
 async function validateTextDocument(textDocument: TextDocument): Promise<void> {
+	connection.console.log(`Circuit Language Server: Validating document ${textDocument.uri}`);
 	// Save the document to a temporary file for CircuitSimulator to parse
 	const tempDir = path.join(__dirname, '..', '..', 'temp');
 	if (!fs.existsSync(tempDir)) {
@@ -198,59 +204,163 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 	connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
 }
 
-connection.onDidChangeWatchedFiles(_change => {
+connection.onDidChangeWatchedFiles((_change: any) => {
 	// Monitored files have change in VS Code
 	connection.console.log('We received a file change event');
 });
 
-// This handler provides the initial list of the completion items.
+// This handler provides context-aware completion items.
 connection.onCompletion(
-	(_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
-		// The pass parameter contains the position of the text document in
-		// which code complete got requested. For the example we ignore this
-		// info and always provide the same completion items.
-		return [
-			{
-				label: 'circuit',
-				kind: CompletionItemKind.Keyword,
-				data: 1
-			},
-			{
-				label: 'inputs',
-				kind: CompletionItemKind.Keyword,
-				data: 2
-			},
-			{
-				label: 'outputs',
-				kind: CompletionItemKind.Keyword,
-				data: 3
-			},
-			{
-				label: 'gates',
-				kind: CompletionItemKind.Keyword,
-				data: 4
-			},
-			{
-				label: 'connections',
-				kind: CompletionItemKind.Keyword,
-				data: 5
-			},
-			{
-				label: 'AND',
-				kind: CompletionItemKind.Function,
-				data: 6
-			},
-			{
-				label: 'OR',
-				kind: CompletionItemKind.Function,
-				data: 7
-			},
-			{
-				label: 'NOT',
-				kind: CompletionItemKind.Function,
-				data: 8
-			}
-		];
+	(textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
+		const document = documents.get(textDocumentPosition.textDocument.uri);
+		if (!document) {
+			return [];
+		}
+
+		const position = textDocumentPosition.position;
+		const text = document.getText();
+		const lines = text.split('\n');
+		const currentLine = lines[position.line] || '';
+		const lineUpToCursor = currentLine.substring(0, position.character);
+		
+		// Context-aware suggestions
+		const suggestions: CompletionItem[] = [];
+
+		// If we're at the start of a line or after whitespace, suggest top-level keywords
+		if (lineUpToCursor.trim() === '' || /^\s*$/.test(lineUpToCursor)) {
+			suggestions.push(
+				{
+					label: 'circuit',
+					kind: CompletionItemKind.Snippet,
+					insertText: 'circuit ${1:CircuitName} {\n\tinputs { ${2:input1} }\n\toutputs { ${3:output1} }\n\tgates {\n\t\t${4:gate1} = ${5:AND}()\n\t}\n\tconnections {\n\t\t${6:input1} -> ${7:gate1}.in[0]\n\t\t${8:gate1}.out -> ${9:output1}\n\t}\n}',
+					documentation: 'Create a new circuit with basic structure'
+				},
+				{
+					label: 'import',
+					kind: CompletionItemKind.Snippet,
+					insertText: 'import "${1:filename.circuit}"',
+					documentation: 'Import another circuit file'
+				}
+			);
+		}
+
+		// Inside circuit block
+		if (text.includes('circuit') && /circuit\s+\w+\s*\{[^}]*$/.test(text.substring(0, document.offsetAt(position)))) {
+			suggestions.push(
+				{
+					label: 'inputs',
+					kind: CompletionItemKind.Snippet,
+					insertText: 'inputs { ${1:input_name} }',
+					documentation: 'Define circuit inputs'
+				},
+				{
+					label: 'outputs',
+					kind: CompletionItemKind.Snippet,
+					insertText: 'outputs { ${1:output_name} }',
+					documentation: 'Define circuit outputs'
+				},
+				{
+					label: 'lookup_tables',
+					kind: CompletionItemKind.Snippet,
+					insertText: 'lookup_tables {\n\t${1:table_name} = {\n\t\t${2:00} -> ${3:0}\n\t\t${4:01} -> ${5:1}\n\t}\n}',
+					documentation: 'Define lookup tables for custom logic'
+				},
+				{
+					label: 'gates',
+					kind: CompletionItemKind.Snippet,
+					insertText: 'gates {\n\t${1:gate_name} = ${2:AND}()\n}',
+					documentation: 'Define gates and subcircuits'
+				},
+				{
+					label: 'connections',
+					kind: CompletionItemKind.Snippet,
+					insertText: 'connections {\n\t${1:source} -> ${2:target}\n}',
+					documentation: 'Define signal connections'
+				}
+			);
+		}
+
+		// Inside gates block
+		if (lineUpToCursor.includes('=') || /gates\s*\{[^}]*$/.test(text.substring(0, document.offsetAt(position)))) {
+			const gateTypes = [
+				{ name: 'AND', desc: 'Logical AND gate (2 inputs, 1 output)' },
+				{ name: 'OR', desc: 'Logical OR gate (2 inputs, 1 output)' },
+				{ name: 'NOT', desc: 'Inverter gate (1 input, 1 output)' },
+				{ name: 'NAND', desc: 'NAND gate (2 inputs, 1 output)' },
+				{ name: 'NOR', desc: 'NOR gate (2 inputs, 1 output)' },
+				{ name: 'XOR', desc: 'Exclusive OR gate (2 inputs, 1 output)' },
+				{ name: 'XNOR', desc: 'Exclusive NOR gate (2 inputs, 1 output)' },
+				{ name: 'DFF', desc: 'D Flip-Flop (1 data + 1 clock input, 1 output)' }
+			];
+			
+			gateTypes.forEach(gate => {
+				suggestions.push({
+					label: gate.name + '()',
+					kind: CompletionItemKind.Function,
+					insertText: gate.name + '()',
+					documentation: gate.desc
+				});
+			});
+
+			suggestions.push(
+				{
+					label: 'Circuit',
+					kind: CompletionItemKind.Function,
+					insertText: 'Circuit("${1:CircuitName}")',
+					documentation: 'Reference another circuit as a subcircuit'
+				},
+				{
+					label: 'LookupTable',
+					kind: CompletionItemKind.Function,
+					insertText: 'LookupTable("${1:table_name}")',
+					documentation: 'Use a custom lookup table'
+				}
+			);
+		}
+
+		// Inside connections block - suggest connection syntax
+		if (/connections\s*\{[^}]*$/.test(text.substring(0, document.offsetAt(position)))) {
+			suggestions.push(
+				{
+					label: '-> connection',
+					kind: CompletionItemKind.Snippet,
+					insertText: '${1:source} -> ${2:target}.in[${3:0}]',
+					documentation: 'Connect source to gate input'
+				},
+				{
+					label: '-> output',
+					kind: CompletionItemKind.Snippet,
+					insertText: '${1:gate}.out -> ${2:output_name}',
+					documentation: 'Connect gate output to circuit output'
+				}
+			);
+		}
+
+		// Add common patterns
+		if (lineUpToCursor.includes('.')) {
+			suggestions.push(
+				{
+					label: 'in[0]',
+					kind: CompletionItemKind.Property,
+					insertText: 'in[${1:0}]',
+					documentation: 'Gate input pin'
+				},
+				{
+					label: 'out',
+					kind: CompletionItemKind.Property,
+					insertText: 'out',
+					documentation: 'Gate output pin'
+				},
+				{
+					label: 'out[0]',
+					kind: CompletionItemKind.Property,
+					insertText: 'out[${1:0}]',
+					documentation: 'Indexed gate output pin'
+				}
+			);
+		}
+
+		return suggestions;
 	}
 );
 
@@ -258,34 +368,79 @@ connection.onCompletion(
 // the completion list.
 connection.onCompletionResolve(
 	(item: CompletionItem): CompletionItem => {
-		if (item.data === 1) {
-			item.detail = 'Circuit declaration';
-			item.documentation = 'Declare a new circuit';
-		} else if (item.data === 2) {
-			item.detail = 'Inputs block';
-			item.documentation = 'Define circuit inputs';
-		} else if (item.data === 3) {
-			item.detail = 'Outputs block';
-			item.documentation = 'Define circuit outputs';
-		} else if (item.data === 4) {
-			item.detail = 'Gates block';
-			item.documentation = 'Define gates and subcircuits';
-		} else if (item.data === 5) {
-			item.detail = 'Connections block';
-			item.documentation = 'Define signal connections';
-		} else if (item.data === 6) {
-			item.detail = 'AND gate';
-			item.documentation = 'Logical AND gate';
-		} else if (item.data === 7) {
-			item.detail = 'OR gate';
-			item.documentation = 'Logical OR gate';
-		} else if (item.data === 8) {
-			item.detail = 'NOT gate';
-			item.documentation = 'Inverter gate';
-		}
+		// Most documentation is already set in onCompletion
+		// This can be used for lazy loading of expensive completion details
 		return item;
 	}
 );
+
+// Hover support for showing information about symbols
+connection.onHover(
+	(textDocumentPosition: TextDocumentPositionParams) => {
+		const document = documents.get(textDocumentPosition.textDocument.uri);
+		if (!document) {
+			return null;
+		}
+
+		const position = textDocumentPosition.position;
+		const text = document.getText();
+		const offset = document.offsetAt(position);
+		
+		// Find the word at cursor position
+		const wordRange = getWordRangeAtPosition(text, offset);
+		if (!wordRange) {
+			return null;
+		}
+		
+		const word = text.substring(wordRange.start, wordRange.end);
+		
+		// Provide hover information for different symbols
+		const gateInfo: { [key: string]: string } = {
+			'AND': 'Logical AND gate\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 0\n0 | 1 | 0\n1 | 0 | 0\n1 | 1 | 1\n```',
+			'OR': 'Logical OR gate\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 0\n0 | 1 | 1\n1 | 0 | 1\n1 | 1 | 1\n```',
+			'NOT': 'Inverter gate\n\nInputs: 1\nOutputs: 1\n\nTruth table:\n```\nA | Y\n0 | 1\n1 | 0\n```',
+			'NAND': 'NAND gate (NOT AND)\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 1\n0 | 1 | 1\n1 | 0 | 1\n1 | 1 | 0\n```',
+			'NOR': 'NOR gate (NOT OR)\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 1\n0 | 1 | 0\n1 | 0 | 0\n1 | 1 | 0\n```',
+			'XOR': 'Exclusive OR gate\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 0\n0 | 1 | 1\n1 | 0 | 1\n1 | 1 | 0\n```',
+			'XNOR': 'Exclusive NOR gate\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 1\n0 | 1 | 0\n1 | 0 | 0\n1 | 1 | 1\n```',
+			'DFF': 'D Flip-Flop\n\nInputs: 2 (data + clock)\nOutputs: 1\n\nStores the data input value when clock edge occurs.',
+			'circuit': 'Circuit declaration keyword\n\nDefines a new circuit with inputs, outputs, gates, and connections.',
+			'inputs': 'Inputs block\n\nDefines the input pins of the circuit.\n\nSyntax: `inputs { name1, name2, array[size] }`',
+			'outputs': 'Outputs block\n\nDefines the output pins of the circuit.\n\nSyntax: `outputs { name1, name2 }`',
+			'gates': 'Gates block\n\nDefines logic gates and subcircuits.\n\nSyntax: `gates { gate_name = GateType() }`',
+			'connections': 'Connections block\n\nDefines signal connections between gates.\n\nSyntax: `connections { source -> target }`',
+			'lookup_tables': 'Lookup Tables block\n\nDefines custom truth tables for arbitrary logic.\n\nSyntax: `lookup_tables { name = { input -> output } }`'
+		};
+
+		const info = gateInfo[word];
+		if (info) {
+			return {
+				contents: {
+					kind: 'markdown',
+					value: info
+				}
+			};
+		}
+
+		return null;
+	}
+);
+
+function getWordRangeAtPosition(text: string, offset: number): { start: number; end: number } | null {
+	const wordRegex = /[a-zA-Z_][a-zA-Z0-9_]*/g;
+	let match;
+	
+	while ((match = wordRegex.exec(text)) !== null) {
+		if (match.index <= offset && offset <= match.index + match[0].length) {
+			return {
+				start: match.index,
+				end: match.index + match[0].length
+			};
+		}
+	}
+	
+	return null;
+}
 
 // Make the text document manager listen on the connection
 // for open, change and close text document events
