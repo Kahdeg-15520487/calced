@@ -17,7 +17,7 @@ import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
 
-import { execFile } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as url from 'url';
@@ -520,7 +520,6 @@ connection.onHover(
 			fs.writeFileSync(tempFile, text);
 
 			// Call C# program with --info mode synchronously
-			const { execFileSync } = require('child_process');
 			const stdout = execFileSync(simulatorPath, [tempFile, '--info', `--base-path=${documentDir}`], { encoding: 'utf8' });
 			
 			if (stdout) {
