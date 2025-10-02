@@ -17,7 +17,9 @@ namespace CircuitSimulator
         private Dictionary<Gate, string> GateToName { get; } = new Dictionary<Gate, string>();
         // External inputs and outputs
         public Dictionary<string, bool> ExternalInputs { get; } = new Dictionary<string, bool>();
+        public List<string> InputNames { get; } = new List<string>();
         public Dictionary<string, Gate?> ExternalOutputs { get; } = new Dictionary<string, Gate?>();
+        public List<string> OutputNames { get; } = new List<string>();
 
         public void AddGate(string name, Gate gate)
         {

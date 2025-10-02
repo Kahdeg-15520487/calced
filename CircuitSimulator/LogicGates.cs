@@ -85,6 +85,9 @@ namespace CircuitSimulator
     {
         private Circuit SubCircuit { get; }
 
+        public List<string> InputNames => SubCircuit.InputNames;
+        public List<string> OutputNames => SubCircuit.OutputNames;
+
         public CircuitGate(Circuit subCircuit)
         {
             SubCircuit = subCircuit;

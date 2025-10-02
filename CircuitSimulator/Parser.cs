@@ -30,7 +30,7 @@ namespace CircuitSimulator
                 }
                 else if (Match(TokenType.CIRCUIT))
                 {
-                    var circuit = ParseCircuit();
+                    var circuit = ParseCircuit(circuits);
                     circuits[circuit.Name] = circuit;
                 }
                 else
@@ -68,7 +68,7 @@ namespace CircuitSimulator
             }
         }
 
-        private Circuit ParseCircuit()
+        private Circuit ParseCircuit(Dictionary<string, Circuit> circuits)
         {
             Consume(TokenType.IDENTIFIER, "Expected circuit name");
             string circuitName = Previous().Value;
@@ -89,7 +89,7 @@ namespace CircuitSimulator
                 }
                 else if (Match(TokenType.GATES))
                 {
-                    ParseGates(circuit);
+                    ParseGates(circuit, circuits);
                 }
                 else if (Match(TokenType.LOOKUP_TABLES))
                 {
@@ -128,12 +128,15 @@ namespace CircuitSimulator
 
                         for (int i = 0; i < size; i++)
                         {
-                            circuit.ExternalInputs[$"{name}[{i}]"] = false;
+                            string indexedName = $"{name}[{i}]";
+                            circuit.ExternalInputs[indexedName] = false;
+                            circuit.InputNames.Add(indexedName);
                         }
                     }
                     else
                     {
                         circuit.ExternalInputs[name] = false;
+                        circuit.InputNames.Add(name);
                     }
                 }
 
@@ -155,6 +158,7 @@ namespace CircuitSimulator
                 Consume(TokenType.IDENTIFIER, "Expected output name");
                 string name = Previous().Value;
                 circuit.ExternalOutputs[name] = null;
+                circuit.OutputNames.Add(name);
 
                 if (!Check(TokenType.RBRACE))
                 {
@@ -165,7 +169,7 @@ namespace CircuitSimulator
             Consume(TokenType.RBRACE, "Expected '}' after outputs");
         }
 
-        private void ParseGates(Circuit circuit)
+        private void ParseGates(Circuit circuit, Dictionary<string, Circuit> circuits)
         {
             Consume(TokenType.LBRACE, "Expected '{' after 'gates'");
 
@@ -187,9 +191,12 @@ namespace CircuitSimulator
                     string circuitName = Previous().Value;
                     Consume(TokenType.RPAREN, "Expected ')' after circuit name");
 
-                    // For now, we'll assume circuits are already parsed
-                    // This is a limitation of the current architecture
-                    throw new NotImplementedException("Circuit references in new parser not yet implemented");
+                    if (!circuits.TryGetValue(circuitName, out var subCircuit))
+                    {
+                        throw new DSLInvalidGateException(gateName, $"Circuit '{circuitName}' not found");
+                    }
+
+                    gate = new CircuitGate(subCircuit);
                 }
                 else if (gateType == "LookupTable")
                 {
@@ -326,15 +333,87 @@ namespace CircuitSimulator
             {
                 // gate.output format
                 var parts = source.Split('.');
-                if (parts.Length == 2 && parts[1] == "out")
+                if (parts.Length == 2)
                 {
-                    if (circuit.NamedGates.TryGetValue(parts[0], out var gate))
+                    if (!circuit.NamedGates.TryGetValue(parts[0], out var gate))
+                    {
+                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Source gate '{parts[0]}' not found");
+                    }
+
+                    if (parts[1] == "out")
                     {
                         sourceObj = gate;
                     }
+                    else if (parts[1].StartsWith("out[") && parts[1].EndsWith("]"))
+                    {
+                        var indexStr = parts[1].Substring(4, parts[1].Length - 5);
+                        if (int.TryParse(indexStr, out int outputIndex))
+                        {
+                            if (gate is CircuitGate cg)
+                            {
+                                if (outputIndex >= cg.Outputs.Count)
+                                {
+                                    throw new DSLInvalidConnectionException($"{source} -> {target}", $"Output index {outputIndex} out of range for gate '{parts[0]}'");
+                                }
+                                var outputGate = new SubcircuitOutputGate(cg, outputIndex);
+                                var outputGateName = $"{parts[0]}_out_{outputIndex}";
+                                circuit.AddGate(outputGateName, outputGate);
+                                sourceObj = outputGate;
+                            }
+                            else if (gate is LookupTableGate ltg)
+                            {
+                                if (outputIndex >= ltg.Outputs.Count)
+                                {
+                                    throw new DSLInvalidConnectionException($"{source} -> {target}", $"Output index {outputIndex} out of range for gate '{parts[0]}'");
+                                }
+                                var outputGate = new LookupTableOutputGate(ltg, outputIndex);
+                                var outputGateName = $"{parts[0]}_out_{outputIndex}";
+                                circuit.AddGate(outputGateName, outputGate);
+                                sourceObj = outputGate;
+                            }
+                            else
+                            {
+                                throw new DSLInvalidConnectionException($"{source} -> {target}", $"Gate '{parts[0]}' does not support indexed outputs");
+                            }
+                        }
+                        else
+                        {
+                            throw new DSLInvalidConnectionException($"{source} -> {target}", $"Invalid output index: {indexStr}");
+                        }
+                    }
                     else
                     {
+                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Invalid source format: {source}");
+                    }
+                }
+                else if (parts.Length == 3 && parts[1] == "out")
+                {
+                    if (!circuit.NamedGates.TryGetValue(parts[0], out var gate))
+                    {
                         throw new DSLInvalidConnectionException($"{source} -> {target}", $"Source gate '{parts[0]}' not found");
+                    }
+
+                    string outputName = parts[2];
+                    if (gate is CircuitGate cg)
+                    {
+                        int outputIndex = cg.OutputNames.IndexOf(outputName);
+                        if (outputIndex == -1)
+                        {
+                            throw new DSLInvalidConnectionException($"{source} -> {target}", $"Output name '{outputName}' not found in subcircuit '{parts[0]}'");
+                        }
+                        var outputGate = new SubcircuitOutputGate(cg, outputIndex);
+                        var outputGateName = $"{parts[0]}_out_{outputIndex}";
+                        circuit.AddGate(outputGateName, outputGate);
+                        sourceObj = outputGate;
+                    }
+                    else if (gate is LookupTableGate ltg)
+                    {
+                        // For lookup tables, we don't have named outputs, so this might not apply
+                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Named outputs not supported for lookup table gate '{parts[0]}'");
+                    }
+                    else
+                    {
+                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Gate '{parts[0]}' does not support named outputs");
                     }
                 }
                 else
@@ -353,6 +432,7 @@ namespace CircuitSimulator
                 var parts = target.Split('.');
                 if (parts.Length == 2 && parts[1].StartsWith("in[") && parts[1].EndsWith("]"))
                 {
+                    // Index syntax: gate.in[index]
                     var indexStr = parts[1].Substring(3, parts[1].Length - 4);
                     if (int.TryParse(indexStr, out targetInputIndex))
                     {
@@ -369,6 +449,31 @@ namespace CircuitSimulator
                     else
                     {
                         throw new DSLInvalidConnectionException($"{source} -> {target}", $"Invalid input index: {indexStr}");
+                    }
+                }
+                else if (parts.Length == 3 && parts[1] == "in")
+                {
+                    // Name syntax: gate.in.name
+                    string inputName = parts[2];
+                    if (circuit.NamedGates.TryGetValue(parts[0], out targetGate))
+                    {
+                        if (targetGate is CircuitGate cg)
+                        {
+                            targetInputIndex = cg.InputNames.IndexOf(inputName);
+                            if (targetInputIndex == -1)
+                            {
+                                throw new DSLInvalidConnectionException($"{source} -> {target}", $"Input name '{inputName}' not found in subcircuit '{parts[0]}'");
+                            }
+                            circuit.Connect(sourceObj, targetGate, targetInputIndex);
+                        }
+                        else
+                        {
+                            throw new DSLInvalidConnectionException($"{source} -> {target}", $"Named inputs not supported for non-subcircuit gate '{parts[0]}'");
+                        }
+                    }
+                    else
+                    {
+                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Target gate '{parts[0]}' not found");
                     }
                 }
                 else
@@ -423,6 +528,12 @@ namespace CircuitSimulator
                     Consume(TokenType.RBRACKET, "Expected ']' after output index");
                     source += $".out[{index}]";
                 }
+                else if (Match(TokenType.DOT))
+                {
+                    Consume(TokenType.IDENTIFIER, "Expected output name");
+                    string name = Previous().Value;
+                    source += $".out.{name}";
+                }
                 else
                 {
                     source += ".out";
@@ -445,11 +556,25 @@ namespace CircuitSimulator
                     throw new DSLInvalidSyntaxException("Expected 'in' after dot in target", $"Found '{Previous().Value}' at line {Previous().Line}, column {Previous().Column}");
                 }
 
-                Consume(TokenType.LBRACKET, "Expected '[' after 'in'");
-                Consume(TokenType.NUMBER, "Expected input index");
-                string index = Previous().Value;
-                Consume(TokenType.RBRACKET, "Expected ']' after input index");
-                target += $".in[{index}]";
+                if (Match(TokenType.LBRACKET))
+                {
+                    // Index syntax: in[index]
+                    Consume(TokenType.NUMBER, "Expected input index");
+                    string index = Previous().Value;
+                    Consume(TokenType.RBRACKET, "Expected ']' after input index");
+                    target += $".in[{index}]";
+                }
+                else if (Match(TokenType.DOT))
+                {
+                    // Name syntax: in.name
+                    Consume(TokenType.IDENTIFIER, "Expected input name");
+                    string name = Previous().Value;
+                    target += $".in.{name}";
+                }
+                else
+                {
+                    throw new DSLInvalidSyntaxException("Expected '[' or '.' after 'in' in target", $"Found '{Peek()}' at line {Peek().Line}, column {Peek().Column}");
+                }
             }
 
             return target;
