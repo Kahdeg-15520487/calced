@@ -1,9 +1,20 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Collections.Generic;
 
 namespace CircuitSimulator
 {
+    public class DiagnosticInfo
+    {
+        public string Message { get; set; } = "";
+        public int Line { get; set; }
+        public int Column { get; set; }
+        public int Length { get; set; }
+        public string Severity { get; set; } = "error";
+    }
+
     class Program
     {
         static bool[] ParseMultiBitValue(string valueStr)
@@ -65,14 +76,16 @@ namespace CircuitSimulator
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("Usage: CircuitSimulator <dsl-file> [--<input>=<value>]... [--ticks=N]");
+                Console.WriteLine("Usage: CircuitSimulator <dsl-file> [--<input>=<value>]... [--ticks=N] [--verify]");
                 Console.WriteLine("Examples:");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --ticks=10");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --b=false --ticks=5");
+                Console.WriteLine("  CircuitSimulator circuit.circuit --verify  # For LSP validation");
                 return;
             }
 
             var dslFile = args[0];
+            var isVerifyMode = args.Contains("--verify");
             if (!File.Exists(dslFile))
             {
                 Console.WriteLine($"File not found: {dslFile}");
@@ -82,6 +95,44 @@ namespace CircuitSimulator
             var dsl = File.ReadAllText(dslFile);
             var basePath = Path.GetDirectoryName(Path.GetFullPath(dslFile)) ?? ".";
 
+            if (isVerifyMode)
+            {
+                // LSP verification mode - return JSON diagnostics
+                var diagnostics = new List<DiagnosticInfo>();
+                
+                try
+                {
+                    RegexParser.Parse(dsl, basePath, useNewParser: true);
+                    // If parsing succeeds, no diagnostics
+                }
+                catch (DSLParseException ex)
+                {
+                    diagnostics.Add(new DiagnosticInfo
+                    {
+                        Message = ex.Message,
+                        Line = ex.Line - 1, // Convert to 0-based
+                        Column = ex.Column - 1, // Convert to 0-based
+                        Length = Math.Max(1, ex.Message.Length / 10), // Approximate length
+                        Severity = "error"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    diagnostics.Add(new DiagnosticInfo
+                    {
+                        Message = $"Unexpected error: {ex.Message}",
+                        Line = 0,
+                        Column = 0,
+                        Length = 1,
+                        Severity = "error"
+                    });
+                }
+
+                Console.WriteLine(JsonSerializer.Serialize(diagnostics, new JsonSerializerOptions { WriteIndented = false }));
+                return;
+            }
+
+            // Normal simulation mode
             Circuit circuit;
             try
             {

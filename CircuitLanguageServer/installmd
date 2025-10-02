@@ -1,0 +1,25 @@
+Install the packaging tool:
+npm install -g @vscode/vsce
+Package the extension:
+cd CircuitLanguageServer
+vsce package
+This creates a .vsix file (e.g., circuit-language-server-0.0.1.vsix)
+
+Install in VS Code:
+
+Open VS Code
+Press Ctrl+Shift+P (or Cmd+Shift+P on Mac)
+Type "Extensions: Install from VSIX"
+Select the .vsix file you just created
+Option 2: Run in Development Mode (For Testing/Development)
+Open the extension folder in VS Code:
+
+Press F5 or go to Run & Debug panel and select "Launch Extension"
+
+This opens a new VS Code window with your extension loaded
+Any .circuit files will now have syntax highlighting, diagnostics, and completion
+Option 3: Manual Installation (Alternative)
+If you prefer not to use vsce, you can also:
+
+Copy the entire CircuitLanguageServer folder to ~/.vscode/extensions/ (Linux/Mac) or %USERPROFILE%\.vscode\extensions\ (Windows)
+Restart VS Code

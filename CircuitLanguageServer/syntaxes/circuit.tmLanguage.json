@@ -1,0 +1,208 @@
+{
+  "name": "Circuit",
+  "scopeName": "source.circuit",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#imports"
+    },
+    {
+      "include": "#circuit"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.circuit",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "imports": {
+      "patterns": [
+        {
+          "name": "keyword.control.circuit",
+          "match": "\\bimport\\b"
+        },
+        {
+          "name": "string.quoted.double.circuit",
+          "match": "\"[^\"]*\""
+        }
+      ]
+    },
+    "circuit": {
+      "begin": "\\bcircuit\\b\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.type.circuit"
+        }
+      },
+      "end": "\\}",
+      "name": "meta.circuit.circuit",
+      "patterns": [
+        {
+          "include": "#circuit-body"
+        }
+      ]
+    },
+    "circuit-body": {
+      "patterns": [
+        {
+          "include": "#inputs"
+        },
+        {
+          "include": "#outputs"
+        },
+        {
+          "include": "#lookup-tables"
+        },
+        {
+          "include": "#gates"
+        },
+        {
+          "include": "#connections"
+        }
+      ]
+    },
+    "inputs": {
+      "begin": "\\binputs\\b\\s*\\{",
+      "end": "\\}",
+      "name": "meta.circuit.inputs",
+      "patterns": [
+        {
+          "include": "#input-list"
+        }
+      ]
+    },
+    "outputs": {
+      "begin": "\\boutputs\\b\\s*\\{",
+      "end": "\\}",
+      "name": "meta.circuit.outputs",
+      "patterns": [
+        {
+          "include": "#output-list"
+        }
+      ]
+    },
+    "lookup-tables": {
+      "begin": "\\blookup_tables\\b\\s*\\{",
+      "end": "\\}",
+      "name": "meta.circuit.lookup-tables",
+      "patterns": [
+        {
+          "include": "#lookup-table"
+        }
+      ]
+    },
+    "gates": {
+      "begin": "\\bgates\\b\\s*\\{",
+      "end": "\\}",
+      "name": "meta.circuit.gates",
+      "patterns": [
+        {
+          "include": "#gate-definition"
+        }
+      ]
+    },
+    "connections": {
+      "begin": "\\bconnections\\b\\s*\\{",
+      "end": "\\}",
+      "name": "meta.circuit.connections",
+      "patterns": [
+        {
+          "include": "#connection"
+        }
+      ]
+    },
+    "input-list": {
+      "patterns": [
+        {
+          "name": "variable.parameter.circuit",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        },
+        {
+          "name": "variable.parameter.circuit",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\s*\\[\\s*\\d+\\s*\\]"
+        }
+      ]
+    },
+    "output-list": {
+      "patterns": [
+        {
+          "name": "variable.parameter.circuit",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    },
+    "lookup-table": {
+      "begin": "([a-zA-Z_][a-zA-Z0-9_]*)\\s*=\\s*\\{",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.function.circuit"
+        }
+      },
+      "end": "\\}",
+      "name": "meta.circuit.lookup-table",
+      "patterns": [
+        {
+          "name": "constant.numeric.circuit",
+          "match": "\\b[01]+\\s*->\\s*[01]+\\b"
+        }
+      ]
+    },
+    "gate-definition": {
+      "patterns": [
+        {
+          "name": "variable.other.circuit",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        },
+        {
+          "name": "keyword.operator.assignment.circuit",
+          "match": "="
+        },
+        {
+          "include": "#gate-type"
+        }
+      ]
+    },
+    "gate-type": {
+      "patterns": [
+        {
+          "name": "support.function.circuit",
+          "match": "\\b(AND|OR|NOT|NAND|NOR|XOR|XNOR|DFF)\\(\\)"
+        },
+        {
+          "name": "support.function.circuit",
+          "match": "\\bCircuit\\(\\s*\"[^\"]*\"\\s*\\)"
+        },
+        {
+          "name": "support.function.circuit",
+          "match": "\\bLookupTable\\(\\s*\"[^\"]*\"\\s*\\)"
+        }
+      ]
+    },
+    "connection": {
+      "patterns": [
+        {
+          "name": "variable.other.circuit",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(\\[[0-9]+\\])?\\b"
+        },
+        {
+          "name": "keyword.operator.arrow.circuit",
+          "match": "->"
+        },
+        {
+          "name": "variable.other.circuit",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(\\[[0-9]+\\])?\\b"
+        },
+        {
+          "name": "variable.other.circuit",
+          "match": "\\.[a-zA-Z_][a-zA-Z0-9_]*(\\[[0-9]+\\])?\\b"
+        }
+      ]
+    }
+  }
+}
