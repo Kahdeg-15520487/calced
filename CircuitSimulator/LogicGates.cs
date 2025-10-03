@@ -4,6 +4,8 @@ namespace CircuitSimulator
     {
         public List<bool> Inputs { get; set; } = [];
         public List<bool> Outputs { get; protected set; } = [];
+        public int DefinitionLine { get; set; } = 0;
+        public string Type { get; set; } = "";
 
         public bool Output => Outputs.Count > 0 && Outputs[0];
 
@@ -15,6 +17,7 @@ namespace CircuitSimulator
         public AndGate()
         {
             Outputs = [false];
+            Type = "AND";
         }
 
         public override void Compute()
@@ -28,6 +31,7 @@ namespace CircuitSimulator
         public OrGate()
         {
             Outputs = [false];
+            Type = "OR";
         }
 
         public override void Compute()
@@ -41,6 +45,7 @@ namespace CircuitSimulator
         public NotGate()
         {
             Outputs = [false];
+            Type = "NOT";
         }
 
         public override void Compute()
@@ -55,6 +60,7 @@ namespace CircuitSimulator
         public NandGate()
         {
             Outputs = [false];
+            Type = "NAND";
         }
 
         public override void Compute()
@@ -68,6 +74,7 @@ namespace CircuitSimulator
         public NorGate()
         {
             Outputs = [false];
+            Type = "NOR";
         }
 
         public override void Compute()
@@ -81,6 +88,7 @@ namespace CircuitSimulator
         public XorGate()
         {
             Outputs = [false];
+            Type = "XOR";
         }
 
         public override void Compute()
@@ -94,6 +102,7 @@ namespace CircuitSimulator
         public XnorGate()
         {
             Outputs = [false];
+            Type = "XNOR";
         }
 
         public override void Compute()
@@ -109,6 +118,7 @@ namespace CircuitSimulator
         public DFlipFlop()
         {
             Outputs = [false];
+            Type = "DFF";
         }
 
         public override void Compute()
@@ -133,6 +143,7 @@ namespace CircuitSimulator
             SubCircuit = subCircuit;
             // Initialize outputs list with the same size as subcircuit outputs
             Outputs = [.. new bool[subCircuit.ExternalOutputs.Count]];
+            Type = "Circuit:" + subCircuit.Name;
         }
 
         public override void Compute()
@@ -181,9 +192,10 @@ namespace CircuitSimulator
     {
         private Dictionary<string, bool[]> LookupTable { get; }
 
-        public LookupTableGate(Dictionary<string, bool[]> lookupTable)
+        public LookupTableGate(Dictionary<string, bool[]> lookupTable, string tableName)
         {
             LookupTable = lookupTable;
+            Type = "LookupTable:" + tableName;
             // Initialize outputs based on the first table entry
             if (lookupTable.Count > 0)
             {

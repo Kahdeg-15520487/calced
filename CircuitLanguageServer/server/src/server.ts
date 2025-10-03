@@ -23,12 +23,18 @@ import * as fs from 'fs';
 import * as url from 'url';
 
 // Circuit information for hover tooltips
+interface GateInfo {
+	Type: string;
+	definitionLine: number;
+}
+
 interface CircuitInfo {
 	name: string;
 	inputs: string[];
 	outputs: string[];
 	filePath: string;
 	definitionLine: number;
+	gates: { [name: string]: GateInfo };
 }
 
 // Create a connection for the server, using Node's IPC as a transport.
@@ -39,7 +45,7 @@ const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 
 // Map to store circuit definitions for hover tooltips
-const circuitDefinitions: Map<string, CircuitInfo> = new Map();
+const circuitDefinitions: Map<string, any> = new Map();
 
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
@@ -420,7 +426,8 @@ function parseCircuitDefinitions(filePath: string, basePath: string): void {
 							inputs: info.Inputs,
 							outputs: info.Outputs,
 							filePath: info.FilePath,
-							definitionLine: info.DefinitionLine
+							definitionLine: info.DefinitionLine,
+							gates: info.Gates
 						});
 					}
 				}
@@ -490,23 +497,21 @@ connection.onHover(
 
 		// Check if hovering over a circuit name in Circuit() calls
 		// First check if it's already in our cached definitions
-		let circuitInfo = circuitDefinitions.get(word);
-		if (circuitInfo) {
-			const inputsStr = circuitInfo.inputs.join(', ');
-			const outputsStr = circuitInfo.outputs.join(', ');
-			const hoverText = `**Circuit: ${circuitInfo.name}**\n\n` +
-				`**Inputs:** ${inputsStr || 'none'}\n\n` +
-				`**Outputs:** ${outputsStr || 'none'}\n\n` +
-				`*Defined in: ${path.basename(circuitInfo.filePath)}*`;
-			return {
-				contents: {
-					kind: 'markdown',
-					value: hoverText
-				}
-			};
-		}
-
-		// If not found, try to get circuit info by calling C# program
+	let circuitInfoDup = circuitDefinitions.get(word);
+	if (circuitInfoDup) {
+		const inputsStr = circuitInfoDup!.inputs.join(', ');
+		const outputsStr = circuitInfoDup!.outputs.join(', ');
+		const hoverText = `**Circuit: ${circuitInfoDup!.name}**\n\n` +
+			`**Inputs:** ${inputsStr || 'none'}\n\n` +
+			`**Outputs:** ${outputsStr || 'none'}\n\n` +
+			`*Defined in: ${path.basename(circuitInfoDup!.filePath)}*`;
+		return {
+			contents: {
+				kind: 'markdown',
+				value: hoverText
+			}
+		};
+	}		// If not found, try to get circuit info by calling C# program
 		try {
 			const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
 			const documentDir = path.dirname(documentPath);
@@ -543,7 +548,165 @@ connection.onHover(
 						inputs: foundCircuit.Inputs,
 						outputs: foundCircuit.Outputs,
 						filePath: foundCircuit.FilePath,
-						definitionLine: foundCircuit.DefinitionLine
+						definitionLine: foundCircuit.DefinitionLine,
+						gates: foundCircuit.Gates
+					});
+					return {
+						contents: {
+							kind: 'markdown',
+							value: hoverText
+						}
+					};
+				}
+			}
+		} catch (error) {
+			// Silently ignore errors for hover functionality
+		}
+
+		// Check if it's a gate instance
+		try {
+			const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
+			const documentDir = path.dirname(documentPath);
+			
+			const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
+			
+			const tempDir = path.join(__dirname, '..', '..', 'temp');
+			if (!fs.existsSync(tempDir)) {
+				fs.mkdirSync(tempDir, { recursive: true });
+			}
+			
+			const tempFile = path.join(tempDir, `hover_${Date.now()}.circuit`);
+			fs.writeFileSync(tempFile, text);
+			
+			const stdout = execFileSync(simulatorPath, [tempFile, '--info', `--base-path=${documentDir}`], { encoding: 'utf8' });
+			
+			if (stdout) {
+				const circuitInfos = JSON.parse(stdout);
+				for (const circuitInfo of circuitInfos) {
+					if (circuitInfo.Gates && circuitInfo.Gates[word]) {
+						const gateType = circuitInfo.Gates[word].Type;
+						if (gateType.startsWith('Circuit:')) {
+							const circuitName = gateType.substring('Circuit:'.length);
+							// Show circuit tooltip
+							let targetCircuit = circuitDefinitions.get(circuitName);
+							if (!targetCircuit) {
+								targetCircuit = circuitInfos.find((c: any) => c.name === circuitName);
+							}
+							if (targetCircuit) {
+								const inputsStr = targetCircuit.inputs?.join(', ') || '';
+								const outputsStr = targetCircuit.outputs?.join(', ') || '';
+								const hoverText = `**Circuit: ${targetCircuit.name}**\n\n` +
+									`**Inputs:** ${inputsStr || 'none'}\n\n` +
+									`**Outputs:** ${outputsStr || 'none'}\n\n` +
+									`*Defined in: ${path.basename(targetCircuit.filePath || '')}*`;
+								return {
+									contents: {
+										kind: 'markdown',
+										value: hoverText
+									}
+								};
+							} else {
+								return {
+									contents: {
+										kind: 'plaintext',
+										value: `Circuit not found: ${circuitName}`
+									}
+								};
+							}
+						} else {
+							// Built-in gate
+							const gateTooltip = gateInfo[gateType];
+							if (gateTooltip) {
+								return {
+									contents: {
+										kind: 'markdown',
+										value: gateTooltip
+									}
+								};
+							} else {
+								return {
+									contents: {
+										kind: 'plaintext',
+										value: `Unknown gate type: ${gateType}`
+									}
+								};
+							}
+						}
+					}
+				}
+
+			} else {
+				return {
+					contents: {
+						kind: 'plaintext',
+						value: 'No output from simulator'
+					}
+				};
+			}
+		} catch (error) {
+			return {
+				contents: {
+					kind: 'plaintext',
+					value: `Error: ${(error as Error).message}`
+				}
+			};
+		}
+
+		// Check if hovering over a circuit name in Circuit() calls
+		// First check if it's already in our cached definitions
+		let circuitInfoHover = circuitDefinitions.get(word) as CircuitInfo | undefined;
+	if (circuitInfoDup) {
+		const inputsStr = circuitInfoDup!.inputs.join(', ');
+		const outputsStr = circuitInfoDup!.outputs.join(', ');
+		const hoverText = `**Circuit: ${circuitInfoDup!.name}**\n\n` +
+			`**Inputs:** ${inputsStr || 'none'}\n\n` +
+			`**Outputs:** ${outputsStr || 'none'}\n\n` +
+			`*Defined in: ${path.basename(circuitInfoDup!.filePath)}*`;
+		return {
+			contents: {
+				kind: 'markdown',
+				value: hoverText
+			}
+		};
+	}		// If not found, try to get circuit info by calling C# program
+		try {
+			const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
+			const documentDir = path.dirname(documentPath);
+			
+			// Path to the bundled CircuitSimulator.exe
+			const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
+			
+			// Create a temporary file with the circuit content
+			const tempDir = path.join(__dirname, '..', '..', 'temp');
+			if (!fs.existsSync(tempDir)) {
+				fs.mkdirSync(tempDir, { recursive: true });
+			}
+			
+			const tempFile = path.join(tempDir, `hover_${Date.now()}.circuit`);
+			fs.writeFileSync(tempFile, text);
+
+			// Call C# program with --info mode synchronously
+			const stdout = execFileSync(simulatorPath, [tempFile, '--info', `--base-path=${documentDir}`], { encoding: 'utf8' });
+			
+			if (stdout) {
+				const circuitInfos = JSON.parse(stdout);
+				const foundCircuit = circuitInfos.find((info: any) => info.Name === word);
+				if (foundCircuit) {
+					const inputsStr = foundCircuit.Inputs.join(', ');
+					const outputsStr = foundCircuit.Outputs.join(', ');
+					const hoverText = `**Circuit: ${foundCircuit.Name}**\n\n` +
+						`**Inputs:** ${inputsStr || 'none'}\n\n` +
+						`**Outputs:** ${outputsStr || 'none'}\n\n` +
+						`*Defined in: ${path.basename(foundCircuit.FilePath)}*`;
+					
+					// Cache the result
+					circuitDefinitions.set(word, {
+						name: foundCircuit.Name,
+						inputs: foundCircuit.Inputs,
+						outputs: foundCircuit.Outputs,
+						filePath: foundCircuit.FilePath,
+						definitionLine: foundCircuit.DefinitionLine,
+						gates: foundCircuit.Gates
 					});
 					
 					// Clean up temp file
@@ -621,10 +784,10 @@ connection.onDefinition(
 				const foundCircuit = circuitInfos.find((info: any) => info.Name === word);
 				if (foundCircuit) {
 					// Convert the file path to a URI
-					const definitionUri = url.pathToFileURL(foundCircuit.FilePath).toString();
+					const definitionUri = url.pathToFileURL(foundCircuit.filePath).toString();
 					
 					// Use the exact definition line (convert from 1-based to 0-based for LSP)
-					const definitionLine = foundCircuit.DefinitionLine - 1;
+					const definitionLine = foundCircuit.definitionLine - 1;
 					return {
 						uri: definitionUri,
 						range: {
@@ -632,6 +795,20 @@ connection.onDefinition(
 							end: { line: definitionLine, character: 1 }
 						}
 					};
+				}
+				
+				// Check if it's a gate in any circuit
+				for (const info of circuitInfos) {
+					if (info.Gates && info.Gates[word]) {
+						const definitionLine = info.Gates[word].definitionLine - 1;
+						return {
+							uri: textDocumentPosition.textDocument.uri,
+							range: {
+								start: { line: definitionLine, character: 0 },
+								end: { line: definitionLine, character: 1 }
+							}
+						};
+					}
 				}
 			}
 			

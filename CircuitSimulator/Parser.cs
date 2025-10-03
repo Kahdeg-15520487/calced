@@ -39,7 +39,7 @@ namespace CircuitSimulator
             {
                 throw new DSLInvalidGateException(tableName, $"Lookup table '{tableName}' not found");
             }
-            return new LookupTableGate(table);
+            return new LookupTableGate(table, tableName);
         }
         private readonly List<Token> _tokens;
         private int _current;
@@ -235,6 +235,7 @@ namespace CircuitSimulator
             {
                 Consume(TokenType.IDENTIFIER, "Expected gate name");
                 string gateName = Previous().Value;
+                int definitionLine = Previous().Line;
 
                 Consume(TokenType.EQUALS, "Expected '=' after gate name");
 
@@ -278,6 +279,7 @@ namespace CircuitSimulator
                     gate = factory();
                 }
 
+                gate.DefinitionLine = definitionLine;
                 circuit.AddGate(gateName, gate);
 
                 if (!Check(TokenType.RBRACE))

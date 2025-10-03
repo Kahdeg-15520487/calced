@@ -15,6 +15,12 @@ namespace CircuitSimulator
         public string Severity { get; set; } = "error";
     }
 
+    public class GateInfo
+    {
+        public string Type { get; set; } = "";
+        public int DefinitionLine { get; set; } = 0;
+    }
+
     public class CircuitInfo
     {
         public string Name { get; set; } = "";
@@ -22,6 +28,7 @@ namespace CircuitSimulator
         public List<string> Outputs { get; set; } = new List<string>();
         public string FilePath { get; set; } = "";
         public int DefinitionLine { get; set; } = 0;
+        public Dictionary<string, GateInfo> Gates { get; set; } = new Dictionary<string, GateInfo>();
     }
 
     class Program
@@ -193,7 +200,8 @@ namespace CircuitSimulator
                             Inputs = circuitEntry.Value.InputNames,
                             Outputs = circuitEntry.Value.OutputNames,
                             FilePath = circuitEntry.Value.FilePath,
-                            DefinitionLine = circuitEntry.Value.DefinitionLine
+                            DefinitionLine = circuitEntry.Value.DefinitionLine,
+                            Gates = circuitEntry.Value.NamedGates.ToDictionary(g => g.Key, g => new GateInfo { Type = g.Value.Type, DefinitionLine = g.Value.DefinitionLine })
                         });
                     }
                 }
