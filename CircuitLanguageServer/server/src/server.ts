@@ -25,16 +25,16 @@ import * as url from 'url';
 // Circuit information for hover tooltips
 interface GateInfo {
 	Type: string;
-	definitionLine: number;
+	DefinitionLine: number;
 }
 
 interface CircuitInfo {
-	name: string;
-	inputs: string[];
-	outputs: string[];
-	filePath: string;
-	definitionLine: number;
-	gates: { [name: string]: GateInfo };
+	Name: string;
+	Inputs: string[];
+	Outputs: string[];
+	FilePath: string;
+	DefinitionLine: number;
+	Gates: { [name: string]: GateInfo };
 }
 
 // Create a connection for the server, using Node's IPC as a transport.
@@ -157,13 +157,13 @@ documents.onDidChangeContent((change: any) => {
 
 async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 	connection.console.log(`Circuit Language Server: Validating document ${textDocument.uri}`);
-	
+
 	// Save the document to a temporary file for CircuitSimulator to parse
 	const tempDir = path.join(__dirname, '..', '..', 'temp');
 	if (!fs.existsSync(tempDir)) {
 		fs.mkdirSync(tempDir, { recursive: true });
 	}
-	
+
 	const tempFile = path.join(tempDir, `temp_${Date.now()}.circuit`);
 	fs.writeFileSync(tempFile, textDocument.getText());
 
@@ -172,10 +172,10 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 	try {
 		// Path to the bundled CircuitSimulator.exe
 		const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
-		
+
 		// Get the directory of the original document for import resolution
 		const documentDir = path.dirname(url.fileURLToPath(textDocument.uri));
-		
+
 		await new Promise<void>((resolve, reject) => {
 			execFile(simulatorPath, [tempFile, '--verify', `--base-path=${documentDir}`], (error, stdout, stderr) => {
 				try {
@@ -247,7 +247,7 @@ connection.onCompletion(
 		const lines = text.split('\n');
 		const currentLine = lines[position.line] || '';
 		const lineUpToCursor = currentLine.substring(0, position.character);
-		
+
 		// Context-aware suggestions
 		const suggestions: CompletionItem[] = [];
 
@@ -317,7 +317,7 @@ connection.onCompletion(
 				{ name: 'XNOR', desc: 'Exclusive NOR gate (2 inputs, 1 output)' },
 				{ name: 'DFF', desc: 'D Flip-Flop (1 data + 1 clock input, 1 output)' }
 			];
-			
+
 			gateTypes.forEach(gate => {
 				suggestions.push({
 					label: gate.name + '()',
@@ -404,13 +404,13 @@ function parseCircuitDefinitions(filePath: string, basePath: string): void {
 	try {
 		// Path to the bundled CircuitSimulator.exe
 		const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
-		
+
 		// Create a temporary file with the circuit content
 		const tempDir = path.join(__dirname, '..', '..', 'temp');
 		if (!fs.existsSync(tempDir)) {
 			fs.mkdirSync(tempDir, { recursive: true });
 		}
-		
+
 		const tempFile = path.join(tempDir, `info_${Date.now()}.circuit`);
 		const content = fs.readFileSync(filePath, 'utf8');
 		fs.writeFileSync(tempFile, content);
@@ -419,7 +419,7 @@ function parseCircuitDefinitions(filePath: string, basePath: string): void {
 		execFile(simulatorPath, [tempFile, '--info', `--base-path=${basePath}`], (error, stdout, stderr) => {
 			try {
 				if (stdout) {
-					const circuitInfos = JSON.parse(stdout);
+					const circuitInfos: CircuitInfo[] = JSON.parse(stdout);
 					for (const info of circuitInfos) {
 						circuitDefinitions.set(info.Name, {
 							name: info.Name,
@@ -458,15 +458,15 @@ connection.onHover(
 		const position = textDocumentPosition.position;
 		const text = document.getText();
 		const offset = document.offsetAt(position);
-		
+
 		// Find the word at cursor position
 		const wordRange = getWordRangeAtPosition(text, offset);
 		if (!wordRange) {
 			return null;
 		}
-		
+
 		const word = text.substring(wordRange.start, wordRange.end);
-		
+
 		// Provide hover information for different symbols
 		const gateInfo: { [key: string]: string } = {
 			'AND': 'Logical AND gate\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 0\n0 | 1 | 0\n1 | 0 | 0\n1 | 1 | 1\n```',
@@ -497,43 +497,43 @@ connection.onHover(
 
 		// Check if hovering over a circuit name in Circuit() calls
 		// First check if it's already in our cached definitions
-	let circuitInfoDup = circuitDefinitions.get(word);
-	if (circuitInfoDup) {
-		const inputsStr = circuitInfoDup!.inputs.join(', ');
-		const outputsStr = circuitInfoDup!.outputs.join(', ');
-		const hoverText = `**Circuit: ${circuitInfoDup!.name}**\n\n` +
-			`**Inputs:** ${inputsStr || 'none'}\n\n` +
-			`**Outputs:** ${outputsStr || 'none'}\n\n` +
-			`*Defined in: ${path.basename(circuitInfoDup!.filePath)}*`;
-		return {
-			contents: {
-				kind: 'markdown',
-				value: hoverText
-			}
-		};
-	}		// If not found, try to get circuit info by calling C# program
+		let circuitInfoDup = circuitDefinitions.get(word);
+		if (circuitInfoDup) {
+			const inputsStr = circuitInfoDup!.inputs.join(', ');
+			const outputsStr = circuitInfoDup!.outputs.join(', ');
+			const hoverText = `**Circuit: ${circuitInfoDup!.name}**\n\n` +
+				`**Inputs:** ${inputsStr || 'none'}\n\n` +
+				`**Outputs:** ${outputsStr || 'none'}\n\n` +
+				`*Defined in: ${path.basename(circuitInfoDup!.filePath)}*`;
+			return {
+				contents: {
+					kind: 'markdown',
+					value: hoverText
+				}
+			};
+		}		// If not found, try to get circuit info by calling C# program
 		try {
 			const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
 			const documentDir = path.dirname(documentPath);
-			
+
 			// Path to the bundled CircuitSimulator.exe
 			const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
-			
+
 			// Create a temporary file with the circuit content
 			const tempDir = path.join(__dirname, '..', '..', 'temp');
 			if (!fs.existsSync(tempDir)) {
 				fs.mkdirSync(tempDir, { recursive: true });
 			}
-			
+
 			const tempFile = path.join(tempDir, `hover_${Date.now()}.circuit`);
 			fs.writeFileSync(tempFile, text);
 
 			// Call C# program with --info mode synchronously
 			const stdout = execFileSync(simulatorPath, [tempFile, '--info', `--base-path=${documentDir}`], { encoding: 'utf8' });
-			
+
 			if (stdout) {
-				const circuitInfos = JSON.parse(stdout);
-				const foundCircuit = circuitInfos.find((info: any) => info.Name === word);
+				const circuitInfos: CircuitInfo[] = JSON.parse(stdout);
+				const foundCircuit = circuitInfos.find((info) => info.Name === word);
 				if (foundCircuit) {
 					const inputsStr = foundCircuit.Inputs.join(', ');
 					const outputsStr = foundCircuit.Outputs.join(', ');
@@ -541,7 +541,7 @@ connection.onHover(
 						`**Inputs:** ${inputsStr || 'none'}\n\n` +
 						`**Outputs:** ${outputsStr || 'none'}\n\n` +
 						`*Defined in: ${path.basename(foundCircuit.FilePath)}*`;
-					
+
 					// Cache the result
 					circuitDefinitions.set(word, {
 						name: foundCircuit.Name,
@@ -567,21 +567,21 @@ connection.onHover(
 		try {
 			const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
 			const documentDir = path.dirname(documentPath);
-			
+
 			const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
-			
+
 			const tempDir = path.join(__dirname, '..', '..', 'temp');
 			if (!fs.existsSync(tempDir)) {
 				fs.mkdirSync(tempDir, { recursive: true });
 			}
-			
+
 			const tempFile = path.join(tempDir, `hover_${Date.now()}.circuit`);
 			fs.writeFileSync(tempFile, text);
-			
+
 			const stdout = execFileSync(simulatorPath, [tempFile, '--info', `--base-path=${documentDir}`], { encoding: 'utf8' });
-			
+
 			if (stdout) {
-				const circuitInfos = JSON.parse(stdout);
+				const circuitInfos: CircuitInfo[] = JSON.parse(stdout);
 				for (const circuitInfo of circuitInfos) {
 					if (circuitInfo.Gates && circuitInfo.Gates[word]) {
 						const gateType = circuitInfo.Gates[word].Type;
@@ -655,42 +655,42 @@ connection.onHover(
 		// Check if hovering over a circuit name in Circuit() calls
 		// First check if it's already in our cached definitions
 		let circuitInfoHover = circuitDefinitions.get(word) as CircuitInfo | undefined;
-	if (circuitInfoDup) {
-		const inputsStr = circuitInfoDup!.inputs.join(', ');
-		const outputsStr = circuitInfoDup!.outputs.join(', ');
-		const hoverText = `**Circuit: ${circuitInfoDup!.name}**\n\n` +
-			`**Inputs:** ${inputsStr || 'none'}\n\n` +
-			`**Outputs:** ${outputsStr || 'none'}\n\n` +
-			`*Defined in: ${path.basename(circuitInfoDup!.filePath)}*`;
-		return {
-			contents: {
-				kind: 'markdown',
-				value: hoverText
-			}
-		};
-	}		// If not found, try to get circuit info by calling C# program
+		if (circuitInfoDup) {
+			const inputsStr = circuitInfoDup!.inputs.join(', ');
+			const outputsStr = circuitInfoDup!.outputs.join(', ');
+			const hoverText = `**Circuit: ${circuitInfoDup!.name}**\n\n` +
+				`**Inputs:** ${inputsStr || 'none'}\n\n` +
+				`**Outputs:** ${outputsStr || 'none'}\n\n` +
+				`*Defined in: ${path.basename(circuitInfoDup!.filePath)}*`;
+			return {
+				contents: {
+					kind: 'markdown',
+					value: hoverText
+				}
+			};
+		}		// If not found, try to get circuit info by calling C# program
 		try {
 			const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
 			const documentDir = path.dirname(documentPath);
-			
+
 			// Path to the bundled CircuitSimulator.exe
 			const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
-			
+
 			// Create a temporary file with the circuit content
 			const tempDir = path.join(__dirname, '..', '..', 'temp');
 			if (!fs.existsSync(tempDir)) {
 				fs.mkdirSync(tempDir, { recursive: true });
 			}
-			
+
 			const tempFile = path.join(tempDir, `hover_${Date.now()}.circuit`);
 			fs.writeFileSync(tempFile, text);
 
 			// Call C# program with --info mode synchronously
 			const stdout = execFileSync(simulatorPath, [tempFile, '--info', `--base-path=${documentDir}`], { encoding: 'utf8' });
-			
+
 			if (stdout) {
-				const circuitInfos = JSON.parse(stdout);
-				const foundCircuit = circuitInfos.find((info: any) => info.Name === word);
+				const circuitInfos: CircuitInfo[] = JSON.parse(stdout);
+				const foundCircuit = circuitInfos.find((info) => info.Name === word);
 				if (foundCircuit) {
 					const inputsStr = foundCircuit.Inputs.join(', ');
 					const outputsStr = foundCircuit.Outputs.join(', ');
@@ -698,7 +698,7 @@ connection.onHover(
 						`**Inputs:** ${inputsStr || 'none'}\n\n` +
 						`**Outputs:** ${outputsStr || 'none'}\n\n` +
 						`*Defined in: ${path.basename(foundCircuit.FilePath)}*`;
-					
+
 					// Cache the result
 					circuitDefinitions.set(word, {
 						name: foundCircuit.Name,
@@ -708,14 +708,14 @@ connection.onHover(
 						definitionLine: foundCircuit.DefinitionLine,
 						gates: foundCircuit.Gates
 					});
-					
+
 					// Clean up temp file
 					try {
 						fs.unlinkSync(tempFile);
 					} catch (cleanupError) {
 						// Ignore cleanup errors
 					}
-					
+
 					return {
 						contents: {
 							kind: 'markdown',
@@ -724,7 +724,7 @@ connection.onHover(
 					};
 				}
 			}
-			
+
 			// Clean up temp file
 			try {
 				fs.unlinkSync(tempFile);
@@ -750,68 +750,121 @@ connection.onDefinition(
 		const position = textDocumentPosition.position;
 		const text = document.getText();
 		const offset = document.offsetAt(position);
-		
+
 		// Find the word at cursor position
 		const wordRange = getWordRangeAtPosition(text, offset);
 		if (!wordRange) {
 			return null;
 		}
-		
+
 		const word = text.substring(wordRange.start, wordRange.end);
-		
+
 		// Check if it's a circuit name that we can find the definition for
 		try {
 			const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
 			const documentDir = path.dirname(documentPath);
-			
+
 			// Path to the bundled CircuitSimulator.exe
 			const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
-			
+
 			// Create a temporary file with the circuit content
 			const tempDir = path.join(__dirname, '..', '..', 'temp');
 			if (!fs.existsSync(tempDir)) {
 				fs.mkdirSync(tempDir, { recursive: true });
 			}
-			
+
 			const tempFile = path.join(tempDir, `def_${Date.now()}.circuit`);
 			fs.writeFileSync(tempFile, text);
 
 			// Call C# program with --info mode synchronously
 			const stdout = execFileSync(simulatorPath, [tempFile, '--info', `--base-path=${documentDir}`], { encoding: 'utf8' });
-			
+
 			if (stdout) {
-				const circuitInfos = JSON.parse(stdout);
-				const foundCircuit = circuitInfos.find((info: any) => info.Name === word);
+				const circuitInfos: CircuitInfo[] = JSON.parse(stdout);
+				const foundCircuit = circuitInfos.find((info) => info.Name === word);
 				if (foundCircuit) {
 					// Convert the file path to a URI
-					const definitionUri = url.pathToFileURL(foundCircuit.filePath).toString();
-					
+					let targetFilePath = foundCircuit.FilePath;
+					if (foundCircuit.FilePath === tempFile) {
+						targetFilePath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
+					}
+					const definitionUri = url.pathToFileURL(targetFilePath).toString();
+
 					// Use the exact definition line (convert from 1-based to 0-based for LSP)
-					const definitionLine = foundCircuit.definitionLine - 1;
+					const definitionLine = foundCircuit.DefinitionLine - 1;
+
+					// Read the file to get the exact line content for dynamic range calculation
+					try {
+						const fileContent = fs.readFileSync(targetFilePath, 'utf8');
+						const lines = fileContent.split('\n');
+						const lineContent = lines[definitionLine];
+						if (lineContent) {
+							const circuitRange = parseCircuitDeclaration(lineContent, foundCircuit.Name);
+							if (circuitRange) {
+								return {
+									uri: definitionUri,
+									range: {
+										start: { line: definitionLine, character: circuitRange.start },
+										end: { line: definitionLine, character: circuitRange.end }
+									}
+								};
+							}
+						}
+					} catch (error) {
+						// Fall back to hardcoded range if file reading fails
+					}
+
+					// Fallback to hardcoded range
 					return {
 						uri: definitionUri,
 						range: {
-							start: { line: definitionLine, character: 0 },
-							end: { line: definitionLine, character: 1 }
+							start: { line: definitionLine, character: 8 },
+							end: { line: definitionLine, character: 50 }
 						}
 					};
 				}
-				
+
 				// Check if it's a gate in any circuit
 				for (const info of circuitInfos) {
 					if (info.Gates && info.Gates[word]) {
-						const definitionLine = info.Gates[word].definitionLine - 1;
+						const definitionLine = info.Gates[word].DefinitionLine - 1;
+						// Read the file to get the exact line content
+						try {
+							// For gates in the current file, use the original document path instead of the temp file path
+							let targetFilePath = info.FilePath;
+							if (info.FilePath === tempFile) {
+								targetFilePath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
+							}
+							const fileContent = fs.readFileSync(targetFilePath, 'utf8');
+							const lines = fileContent.split('\n');
+							const lineContent = lines[definitionLine];
+							if (lineContent) {
+								const gateRange = parseGateDeclaration(lineContent, word);
+								if (gateRange) {
+									return {
+										uri: url.pathToFileURL(targetFilePath).toString(),
+										range: {
+											start: { line: definitionLine, character: gateRange.start },
+											end: { line: definitionLine, character: gateRange.end }
+										}
+									};
+								}
+							}
+						} catch (error) {
+							// Fall back to hardcoded range if file reading fails
+						}
+						// Fallback to hardcoded range
 						return {
 							uri: textDocumentPosition.textDocument.uri,
 							range: {
 								start: { line: definitionLine, character: 0 },
-								end: { line: definitionLine, character: 1 }
+								end: { line: definitionLine, character: word.length }
 							}
 						};
 					}
 				}
 			}
-			
+
 			// Clean up temp file
 			try {
 				fs.unlinkSync(tempFile);
@@ -829,7 +882,7 @@ connection.onDefinition(
 function getWordRangeAtPosition(text: string, offset: number): { start: number; end: number } | null {
 	const wordRegex = /[a-zA-Z_][a-zA-Z0-9_]*/g;
 	let match;
-	
+
 	while ((match = wordRegex.exec(text)) !== null) {
 		if (match.index <= offset && offset <= match.index + match[0].length) {
 			return {
@@ -838,7 +891,33 @@ function getWordRangeAtPosition(text: string, offset: number): { start: number; 
 			};
 		}
 	}
-	
+
+	return null;
+}
+
+// Helper function to parse gate declaration line and find gate name position
+function parseGateDeclaration(line: string, gateName: string): { start: number; end: number } | null {
+	// Look for pattern: gateName = ...
+	const gatePattern = new RegExp(`^(\\s*)${gateName}\\s*=`, 'm');
+	const match = gatePattern.exec(line);
+	if (match) {
+		const startPos = match[1].length; // Length of leading whitespace
+		const endPos = startPos + gateName.length;
+		return { start: startPos, end: endPos };
+	}
+	return null;
+}
+
+// Helper function to parse circuit declaration line and find circuit name position
+function parseCircuitDeclaration(line: string, circuitName: string): { start: number; end: number } | null {
+	// Look for pattern: circuit CircuitName {
+	const circuitPattern = /^(\s*)circuit\s+(\w+)\s*\{/;
+	const match = circuitPattern.exec(line);
+	if (match && match[2] === circuitName) {
+		const startPos = match[1].length + 'circuit '.length; // After "circuit "
+		const endPos = startPos + circuitName.length;
+		return { start: startPos, end: endPos };
+	}
 	return null;
 }
 
