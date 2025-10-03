@@ -122,15 +122,24 @@ namespace CircuitSimulator
             {
                 if (Match(TokenType.INPUTS))
                 {
+                    int startLine = Previous().Line;
                     ParseInputs(circuit);
+                    int endLine = Previous().Line;
+                    circuit.Blocks["inputs"] = new BlockInfo { StartLine = startLine, EndLine = endLine };
                 }
                 else if (Match(TokenType.OUTPUTS))
                 {
+                    int startLine = Previous().Line;
                     ParseOutputs(circuit);
+                    int endLine = Previous().Line;
+                    circuit.Blocks["outputs"] = new BlockInfo { StartLine = startLine, EndLine = endLine };
                 }
                 else if (Match(TokenType.GATES))
                 {
+                    int startLine = Previous().Line;
                     ParseGates(circuit, circuits);
+                    int endLine = Previous().Line;
+                    circuit.Blocks["gates"] = new BlockInfo { StartLine = startLine, EndLine = endLine };
                 }
                 else if (Match(TokenType.LOOKUP_TABLES))
                 {
@@ -138,7 +147,10 @@ namespace CircuitSimulator
                 }
                 else if (Match(TokenType.CONNECTIONS))
                 {
+                    int startLine = Previous().Line;
                     ParseConnections(circuit);
+                    int endLine = Previous().Line;
+                    circuit.Blocks["connections"] = new BlockInfo { StartLine = startLine, EndLine = endLine };
                 }
                 else
                 {

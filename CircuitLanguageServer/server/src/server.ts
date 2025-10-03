@@ -31,6 +31,11 @@ interface GateInfo {
 	DefinitionLine: number;
 }
 
+interface BlockInfo {
+	StartLine: number;
+	EndLine: number;
+}
+
 interface CircuitInfo {
 	Name: string;
 	Inputs: string[];
@@ -38,6 +43,7 @@ interface CircuitInfo {
 	FilePath: string;
 	DefinitionLine: number;
 	Gates: { [name: string]: GateInfo };
+	Blocks: { [name: string]: BlockInfo };
 }
 
 // Create a connection for the server, using Node's IPC as a transport.
@@ -535,8 +541,8 @@ connection.onHover(
 					value: hoverText
 				}
 			};
-		}		
-		
+		}
+
 		// If not found, try to get circuit info by calling C# program
 		const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
 		const documentDir = path.dirname(documentPath);
@@ -650,9 +656,34 @@ connection.onDefinition(
 
 		const word = text.substring(wordRange.start, wordRange.end);
 
+		// Check in cached circuit's blocks first
+		const blockInfo = getBlockInfoAtPosition(document, wordRange.start);
+		if (blockInfo) {
+			console.log(`Found block info for word |${word}|: ${JSON.stringify(blockInfo)}`);
+		}
+
+		switch(blockInfo?.blockName) {
+			case 'inputs':
+				// Handle input block
+				break;
+			case 'outputs':
+				// Handle output block
+				break;
+			case 'connections':
+				// Handle connections block
+				
+				break;
+			case 'gates':
+				// Handle gates block
+				break;
+			default:
+				// Handle default case
+				break;
+		}
+
 		// Check if this is a connection reference like gateName.in.portName or gateName.out.portName
 		const connectionRef = parseConnectionReference(text, offset);
-		console.log(`Parsed connection reference: ${JSON.stringify(connectionRef)} from word "${word}"`);
+		console.log(`Parsed connection reference: ${JSON.stringify(connectionRef)} from word |${word}|`);
 		if (connectionRef) {
 			if (connectionRef.target === 'gate') {
 				// Navigate to the gate definition in the current circuit
@@ -737,7 +768,8 @@ connection.onDefinition(
 									Outputs: circuit.outputs,
 									FilePath: circuit.filePath,
 									DefinitionLine: circuit.definitionLine,
-									Gates: circuit.gates
+									Gates: circuit.gates,
+									Blocks: {}
 								};
 							}
 						}
@@ -788,12 +820,12 @@ connection.onDefinition(
 										const portLineIndex = blockContent.substring(0, portPos.start).split('\n').length - 1;
 										const portLine = lines[blockStartLine + portLineIndex];
 										let portInLinePos = findPortInBlock(portLine, connectionRef.portName);
-										
+
 										// Fallback for single-line blocks: use portPos directly if portInLinePos is null
 										if (!portInLinePos && blockStartLine === blockEndLine) {
 											portInLinePos = portPos;
 										}
-										
+
 										console.log(`Port ${connectionRef.portName} found in line: ${portLine} at positions ${portInLinePos?.start}-${portInLinePos?.end}`);
 
 										if (portInLinePos) {
@@ -970,7 +1002,7 @@ function parseCircuitDeclaration(line: string, circuitName: string): { start: nu
 // Helper function to parse connection references like gateName.in.portName
 function parseConnectionReference(text: string, offset: number): { target: 'gate' | 'port'; gateName: string; direction?: 'in' | 'out'; portName?: string } | null {
 	// Find all connection references that contain the cursor position
-	const allMatches: Array<{match: RegExpExecArray, direction: 'in' | 'out', hasPort: boolean}> = [];
+	const allMatches: Array<{ match: RegExpExecArray, direction: 'in' | 'out', hasPort: boolean }> = [];
 
 	const inPattern = /(\w+)\.in\.(\w+)/g;
 	const outPattern = /(\w+)\.out\.(\w+)/g;
@@ -982,25 +1014,25 @@ function parseConnectionReference(text: string, offset: number): { target: 'gate
 	// Find all matches that contain the cursor
 	while ((match = inPattern.exec(text)) !== null) {
 		if (match.index <= offset && offset <= match.index + match[0].length) {
-			allMatches.push({match, direction: 'in', hasPort: true});
+			allMatches.push({ match, direction: 'in', hasPort: true });
 		}
 	}
 
 	while ((match = outPattern.exec(text)) !== null) {
 		if (match.index <= offset && offset <= match.index + match[0].length) {
-			allMatches.push({match, direction: 'out', hasPort: true});
+			allMatches.push({ match, direction: 'out', hasPort: true });
 		}
 	}
 
 	while ((match = inOnlyPattern.exec(text)) !== null) {
 		if (match.index <= offset && offset <= match.index + match[0].length) {
-			allMatches.push({match, direction: 'in', hasPort: false});
+			allMatches.push({ match, direction: 'in', hasPort: false });
 		}
 	}
 
 	while ((match = outOnlyPattern.exec(text)) !== null) {
 		if (match.index <= offset && offset <= match.index + match[0].length) {
-			allMatches.push({match, direction: 'out', hasPort: false});
+			allMatches.push({ match, direction: 'out', hasPort: false });
 		}
 	}
 
@@ -1042,6 +1074,38 @@ function findPortInBlock(blockContent: string, portName: string): { start: numbe
 	if (match) {
 		return { start: match.index, end: match.index + portName.length };
 	}
+	return null;
+}
+
+// Helper function to get block info at a given position
+function getBlockInfoAtPosition(document: TextDocument, offset: number): { blockName: string, blockInfo: BlockInfo } | null {
+
+	const pos = document!.positionAt(offset);
+	const line = pos.line; // 0-based
+
+	// Get circuit info for the current document
+	const documentPath = url.fileURLToPath(document!.uri);
+	const documentDir = path.dirname(documentPath);
+	const circuitInfos = getCircuitInfo(document!.getText(), documentDir);
+
+	if (!circuitInfos) {
+		return null;
+	}
+
+	// Check each circuit's blocks
+	for (const circuitInfo of circuitInfos) {
+		if (circuitInfo.Blocks) {
+			for (const [blockName, blockInfo] of Object.entries(circuitInfo.Blocks)) {
+				// Convert 1-based lines to 0-based
+				const startLine = blockInfo.StartLine - 1;
+				const endLine = blockInfo.EndLine - 1;
+				if (line >= startLine && line <= endLine) {
+					return { blockName, blockInfo };
+				}
+			}
+		}
+	}
+
 	return null;
 }
 

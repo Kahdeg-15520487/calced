@@ -23,6 +23,9 @@ namespace CircuitSimulator
         public Dictionary<string, Gate?> ExternalOutputs { get; } = new Dictionary<string, Gate?>();
         public List<string> OutputNames { get; } = new List<string>();
 
+        // Block information for LSP
+        public Dictionary<string, BlockInfo> Blocks { get; } = new Dictionary<string, BlockInfo>();
+
         public void AddGate(string name, Gate gate)
         {
             Gates.Add(gate);

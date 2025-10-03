@@ -17,6 +17,12 @@ namespace CircuitSimulator
         public int DefinitionLine { get; set; } = 0;
     }
 
+    public class BlockInfo
+    {
+        public int StartLine { get; set; }
+        public int EndLine { get; set; }
+    }
+
     public class CircuitInfo
     {
         public string Name { get; set; } = "";
@@ -25,6 +31,8 @@ namespace CircuitSimulator
         public string FilePath { get; set; } = "";
         public int DefinitionLine { get; set; } = 0;
         public Dictionary<string, GateInfo> Gates { get; set; } = new Dictionary<string, GateInfo>();
+
+        public Dictionary<string, BlockInfo> Blocks { get; set; } = new Dictionary<string, BlockInfo>();
     }
 
     class Program
@@ -92,9 +100,10 @@ namespace CircuitSimulator
 
             try
             {
-                var lexer = new Lexer(dslFile);
+                var dsl = File.ReadAllText(dslFile);
+                var lexer = new Lexer(dsl);
                 var tokens = lexer.Tokenize().ToList();
-                var parser = new Parser(tokens, basePath, dslFile);
+                var parser = new Parser(tokens, basePath, dsl);
                 var circuits = parser.ParseCircuits();
                 // If parsing succeeds, no diagnostics
             }
@@ -102,7 +111,7 @@ namespace CircuitSimulator
             {
                 // Extract the specific error message
                 string message = ex.Message;
-                
+
                 // For syntax errors with position info, extract just the reason
                 if (message.Contains("Invalid syntax at line ") && message.Contains(": "))
                 {
@@ -146,11 +155,12 @@ namespace CircuitSimulator
 
             try
             {
-                var lexer = new Lexer(dslFile);
+                var dsl = File.ReadAllText(dslFile);
+                var lexer = new Lexer(dsl);
                 var tokens = lexer.Tokenize().ToList();
-                var parser = new Parser(tokens, basePath, dslFile);
+                var parser = new Parser(tokens, basePath, dsl);
                 var circuits = parser.ParseCircuits();
-                
+
                 foreach (var circuitEntry in circuits)
                 {
                     circuitInfos.Add(new CircuitInfo
@@ -160,7 +170,8 @@ namespace CircuitSimulator
                         Outputs = circuitEntry.Value.OutputNames,
                         FilePath = circuitEntry.Value.FilePath,
                         DefinitionLine = circuitEntry.Value.DefinitionLine,
-                        Gates = circuitEntry.Value.NamedGates.Where(g=>!string.IsNullOrEmpty(g.Value.Type)).ToDictionary(g => g.Key, g => new GateInfo { Type = g.Value.Type, DefinitionLine = g.Value.DefinitionLine })
+                        Gates = circuitEntry.Value.NamedGates.Where(g => !string.IsNullOrEmpty(g.Value.Type)).ToDictionary(g => g.Key, g => new GateInfo { Type = g.Value.Type, DefinitionLine = g.Value.DefinitionLine }),
+                        Blocks = circuitEntry.Value.Blocks
                     });
                 }
             }
@@ -179,7 +190,7 @@ namespace CircuitSimulator
             {
                 var builder = new Synthesizer();
                 string synthesizedDsl = builder.GenerateDSL("SynthesizedCircuit", expression);
-                
+
                 // Verify the synthesized DSL by parsing it
                 try
                 {
@@ -196,7 +207,7 @@ namespace CircuitSimulator
                     Console.WriteLine(synthesizedDsl);
                     return;
                 }
-                
+
                 if (outFile != null)
                 {
                     File.WriteAllText(outFile, synthesizedDsl);
@@ -279,7 +290,7 @@ namespace CircuitSimulator
                     {
                         continue;
                     }
-                    
+
                     var parts = arg.Substring(2).Split('=');
                     if (parts.Length == 2)
                     {
@@ -341,7 +352,7 @@ namespace CircuitSimulator
 
             // Simulate for specified number of ticks and collect state history
             var stateHistory = new List<(int Tick, Dictionary<string, bool> Inputs, Dictionary<string, bool> Outputs)>();
-            
+
             // Record initial state (before any ticks)
             var initialOutputs = new Dictionary<string, bool>();
             foreach (var kvp in circuit.ExternalOutputs)
@@ -489,7 +500,7 @@ namespace CircuitSimulator
             var isSynthesizeMode = false;
             string? synthesizeExpression = null;
             string? outFile = null;
-            
+
             // Parse arguments
             string? customBasePath = null;
             for (int i = 0; i < args.Length; i++)
@@ -508,7 +519,7 @@ namespace CircuitSimulator
                     outFile = args[i].Substring("--out=".Length);
                 }
             }
-            
+
             if (isSynthesizeMode)
             {
                 if (synthesizeExpression == null)
