@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "CircuitSimulator": {
+      "commandName": "Project",
+      "commandLineArgs": "circuits/4bitadder.circuit --info --base-path=circuits",
+      "workingDirectory": "C:\\Users\\mnguyen\\Documents\\workspace\\calced"
+    }
+  }
+}

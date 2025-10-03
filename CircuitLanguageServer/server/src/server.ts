@@ -1,3 +1,5 @@
+import { gateInfo } from './gateInfo';
+
 import {
 	createConnection,
 	TextDocuments,
@@ -18,6 +20,7 @@ import {
 } from 'vscode-languageserver-textdocument';
 
 import { execFile, execFileSync } from 'child_process';
+import * as crypto from 'crypto';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as url from 'url';
@@ -46,6 +49,16 @@ const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 
 // Map to store circuit definitions for hover tooltips
 const circuitDefinitions: Map<string, any> = new Map();
+
+// Cache for getCircuitInfo results to avoid redundant calls
+interface CircuitInfoCacheEntry {
+	contentHash: string;
+	basePath: string;
+	result: CircuitInfo[] | null;
+	timestamp: number;
+}
+const circuitInfoCache: Map<string, CircuitInfoCacheEntry> = new Map();
+const MAX_CACHE_SIZE = 50; // Limit cache size to prevent memory leaks
 
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
@@ -147,11 +160,27 @@ function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
 // Only keep settings for open documents
 documents.onDidClose((e: any) => {
 	documentSettings.delete(e.document.uri);
+	// Clear circuit info cache for this document
+	const documentUri = e.document.uri;
+	for (const [key, entry] of circuitInfoCache.entries()) {
+		if (key.includes(documentUri) || key.includes(url.fileURLToPath(documentUri))) {
+			circuitInfoCache.delete(key);
+		}
+	}
 });
 
 // The content of a text document has changed. This event is emitted
 // when the text document first opened or when its content has changed.
 documents.onDidChangeContent((change: any) => {
+	// Update circuit info cache with new content instead of clearing
+	const documentUri = change.document.uri;
+	const documentPath = url.fileURLToPath(documentUri);
+	const documentDir = path.dirname(documentPath);
+	const newContent = change.document.getText();
+
+	// Pre-compute and cache the circuit info for the updated document
+	getCircuitInfo(newContent, documentDir);
+
 	validateTextDocument(change.document);
 });
 
@@ -399,51 +428,63 @@ connection.onCompletionResolve(
 	}
 );
 
-// Function to parse circuit definitions from a file using C# program
-function parseCircuitDefinitions(filePath: string, basePath: string): void {
-	try {
-		// Path to the bundled CircuitSimulator.exe
-		const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
+// Helper function to get circuit information using CircuitSimulator
+function getCircuitInfo(content: string, basePath: string): CircuitInfo[] | null {
+	// Create a cache key based on content hash and basePath
+	const contentHash = crypto.createHash('md5').update(content).digest('hex');
+	const cacheKey = `${basePath}:${contentHash}`;
 
-		// Create a temporary file with the circuit content
+	// Check if we have a cached result
+	const cached = circuitInfoCache.get(cacheKey);
+	if (cached && cached.basePath === basePath) {
+		return cached.result;
+	}
+
+	try {
+		const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
 		const tempDir = path.join(__dirname, '..', '..', 'temp');
 		if (!fs.existsSync(tempDir)) {
 			fs.mkdirSync(tempDir, { recursive: true });
 		}
-
 		const tempFile = path.join(tempDir, `info_${Date.now()}.circuit`);
-		const content = fs.readFileSync(filePath, 'utf8');
 		fs.writeFileSync(tempFile, content);
+		const stdout = execFileSync(simulatorPath, [tempFile, '--info', `--base-path=${basePath}`], { encoding: 'utf8' });
+		const result = JSON.parse(stdout);
 
-		// Call C# program with --info mode
-		execFile(simulatorPath, [tempFile, '--info', `--base-path=${basePath}`], (error, stdout, stderr) => {
-			try {
-				if (stdout) {
-					const circuitInfos: CircuitInfo[] = JSON.parse(stdout);
-					for (const info of circuitInfos) {
-						circuitDefinitions.set(info.Name, {
-							name: info.Name,
-							inputs: info.Inputs,
-							outputs: info.Outputs,
-							filePath: info.FilePath,
-							definitionLine: info.DefinitionLine,
-							gates: info.Gates
-						});
-					}
-				}
-			} catch (parseError) {
-				// Silently ignore parse errors for hover functionality
-			} finally {
-				// Clean up temp file
-				try {
-					fs.unlinkSync(tempFile);
-				} catch (cleanupError) {
-					// Ignore cleanup errors
+		// Cache the result
+		circuitInfoCache.set(cacheKey, {
+			contentHash,
+			basePath,
+			result,
+			timestamp: Date.now()
+		});
+
+		// Evict oldest entries if cache is too large
+		if (circuitInfoCache.size > MAX_CACHE_SIZE) {
+			let oldestKey: string | null = null;
+			let oldestTime = Date.now();
+			for (const [key, entry] of circuitInfoCache.entries()) {
+				if (entry.timestamp < oldestTime) {
+					oldestTime = entry.timestamp;
+					oldestKey = key;
 				}
 			}
-		});
+			if (oldestKey) {
+				circuitInfoCache.delete(oldestKey);
+			}
+		}
+
+		fs.unlinkSync(tempFile);
+		return result;
 	} catch (error) {
-		// Silently ignore errors for hover functionality
+		// Cache the null result to avoid repeated failures
+		circuitInfoCache.set(cacheKey, {
+			contentHash,
+			basePath,
+			result: null,
+			timestamp: Date.now()
+		});
+		return null;
 	}
 }
 
@@ -468,23 +509,6 @@ connection.onHover(
 		const word = text.substring(wordRange.start, wordRange.end);
 
 		// Provide hover information for different symbols
-		const gateInfo: { [key: string]: string } = {
-			'AND': 'Logical AND gate\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 0\n0 | 1 | 0\n1 | 0 | 0\n1 | 1 | 1\n```',
-			'OR': 'Logical OR gate\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 0\n0 | 1 | 1\n1 | 0 | 1\n1 | 1 | 1\n```',
-			'NOT': 'Inverter gate\n\nInputs: 1\nOutputs: 1\n\nTruth table:\n```\nA | Y\n0 | 1\n1 | 0\n```',
-			'NAND': 'NAND gate (NOT AND)\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 1\n0 | 1 | 1\n1 | 0 | 1\n1 | 1 | 0\n```',
-			'NOR': 'NOR gate (NOT OR)\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 1\n0 | 1 | 0\n1 | 0 | 0\n1 | 1 | 0\n```',
-			'XOR': 'Exclusive OR gate\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 0\n0 | 1 | 1\n1 | 0 | 1\n1 | 1 | 0\n```',
-			'XNOR': 'Exclusive NOR gate\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 1\n0 | 1 | 0\n1 | 0 | 0\n1 | 1 | 1\n```',
-			'DFF': 'D Flip-Flop\n\nInputs: 2 (data + clock)\nOutputs: 1\n\nStores the data input value when clock edge occurs.',
-			'circuit': 'Circuit declaration keyword\n\nDefines a new circuit with inputs, outputs, gates, and connections.',
-			'inputs': 'Inputs block\n\nDefines the input pins of the circuit.\n\nSyntax: `inputs { name1, name2, array[size] }`',
-			'outputs': 'Outputs block\n\nDefines the output pins of the circuit.\n\nSyntax: `outputs { name1, name2 }`',
-			'gates': 'Gates block\n\nDefines logic gates and subcircuits.\n\nSyntax: `gates { gate_name = GateType() }`',
-			'connections': 'Connections block\n\nDefines signal connections between gates.\n\nSyntax: `connections { source -> target }`',
-			'lookup_tables': 'Lookup Tables block\n\nDefines custom truth tables for arbitrary logic.\n\nSyntax: `lookup_tables { name = { input -> output } }`'
-		};
-
 		const info = gateInfo[word];
 		if (info) {
 			return {
@@ -511,228 +535,95 @@ connection.onHover(
 					value: hoverText
 				}
 			};
-		}		// If not found, try to get circuit info by calling C# program
-		try {
-			const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
-			const documentDir = path.dirname(documentPath);
+		}		
+		
+		// If not found, try to get circuit info by calling C# program
+		const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
+		const documentDir = path.dirname(documentPath);
+		const circuitInfosHover = getCircuitInfo(text, documentDir);
+		if (circuitInfosHover) {
+			const foundCircuit = circuitInfosHover.find((info) => info.Name === word);
+			if (foundCircuit) {
+				const inputsStr = foundCircuit.Inputs.join(', ');
+				const outputsStr = foundCircuit.Outputs.join(', ');
+				const hoverText = `**Circuit: ${foundCircuit.Name}**\n\n` +
+					`**Inputs:** ${inputsStr || 'none'}\n\n` +
+					`**Outputs:** ${outputsStr || 'none'}\n\n` +
+					`*Defined in: ${path.basename(foundCircuit.FilePath)}*`;
 
-			// Path to the bundled CircuitSimulator.exe
-			const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
-
-			// Create a temporary file with the circuit content
-			const tempDir = path.join(__dirname, '..', '..', 'temp');
-			if (!fs.existsSync(tempDir)) {
-				fs.mkdirSync(tempDir, { recursive: true });
-			}
-
-			const tempFile = path.join(tempDir, `hover_${Date.now()}.circuit`);
-			fs.writeFileSync(tempFile, text);
-
-			// Call C# program with --info mode synchronously
-			const stdout = execFileSync(simulatorPath, [tempFile, '--info', `--base-path=${documentDir}`], { encoding: 'utf8' });
-
-			if (stdout) {
-				const circuitInfos: CircuitInfo[] = JSON.parse(stdout);
-				const foundCircuit = circuitInfos.find((info) => info.Name === word);
-				if (foundCircuit) {
-					const inputsStr = foundCircuit.Inputs.join(', ');
-					const outputsStr = foundCircuit.Outputs.join(', ');
-					const hoverText = `**Circuit: ${foundCircuit.Name}**\n\n` +
-						`**Inputs:** ${inputsStr || 'none'}\n\n` +
-						`**Outputs:** ${outputsStr || 'none'}\n\n` +
-						`*Defined in: ${path.basename(foundCircuit.FilePath)}*`;
-
-					// Cache the result
-					circuitDefinitions.set(word, {
-						name: foundCircuit.Name,
-						inputs: foundCircuit.Inputs,
-						outputs: foundCircuit.Outputs,
-						filePath: foundCircuit.FilePath,
-						definitionLine: foundCircuit.DefinitionLine,
-						gates: foundCircuit.Gates
-					});
-					return {
-						contents: {
-							kind: 'markdown',
-							value: hoverText
-						}
-					};
-				}
-			}
-		} catch (error) {
-			// Silently ignore errors for hover functionality
-		}
-
-		// Check if it's a gate instance
-		try {
-			const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
-			const documentDir = path.dirname(documentPath);
-
-			const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
-
-			const tempDir = path.join(__dirname, '..', '..', 'temp');
-			if (!fs.existsSync(tempDir)) {
-				fs.mkdirSync(tempDir, { recursive: true });
-			}
-
-			const tempFile = path.join(tempDir, `hover_${Date.now()}.circuit`);
-			fs.writeFileSync(tempFile, text);
-
-			const stdout = execFileSync(simulatorPath, [tempFile, '--info', `--base-path=${documentDir}`], { encoding: 'utf8' });
-
-			if (stdout) {
-				const circuitInfos: CircuitInfo[] = JSON.parse(stdout);
-				for (const circuitInfo of circuitInfos) {
-					if (circuitInfo.Gates && circuitInfo.Gates[word]) {
-						const gateType = circuitInfo.Gates[word].Type;
-						if (gateType.startsWith('Circuit:')) {
-							const circuitName = gateType.substring('Circuit:'.length);
-							// Show circuit tooltip
-							let targetCircuit = circuitDefinitions.get(circuitName);
-							if (!targetCircuit) {
-								targetCircuit = circuitInfos.find((c: any) => c.name === circuitName);
-							}
-							if (targetCircuit) {
-								const inputsStr = targetCircuit.inputs?.join(', ') || '';
-								const outputsStr = targetCircuit.outputs?.join(', ') || '';
-								const hoverText = `**Circuit: ${targetCircuit.name}**\n\n` +
-									`**Inputs:** ${inputsStr || 'none'}\n\n` +
-									`**Outputs:** ${outputsStr || 'none'}\n\n` +
-									`*Defined in: ${path.basename(targetCircuit.filePath || '')}*`;
-								return {
-									contents: {
-										kind: 'markdown',
-										value: hoverText
-									}
-								};
-							} else {
-								return {
-									contents: {
-										kind: 'plaintext',
-										value: `Circuit not found: ${circuitName}`
-									}
-								};
-							}
-						} else {
-							// Built-in gate
-							const gateTooltip = gateInfo[gateType];
-							if (gateTooltip) {
-								return {
-									contents: {
-										kind: 'markdown',
-										value: gateTooltip
-									}
-								};
-							} else {
-								return {
-									contents: {
-										kind: 'plaintext',
-										value: `Unknown gate type: ${gateType}`
-									}
-								};
-							}
-						}
-					}
-				}
-
-			} else {
+				// Cache the result
+				circuitDefinitions.set(word, {
+					name: foundCircuit.Name,
+					inputs: foundCircuit.Inputs,
+					outputs: foundCircuit.Outputs,
+					filePath: foundCircuit.FilePath,
+					definitionLine: foundCircuit.DefinitionLine,
+					gates: foundCircuit.Gates
+				});
 				return {
 					contents: {
-						kind: 'plaintext',
-						value: 'No output from simulator'
+						kind: 'markdown',
+						value: hoverText
 					}
 				};
 			}
-		} catch (error) {
-			return {
-				contents: {
-					kind: 'plaintext',
-					value: `Error: ${(error as Error).message}`
-				}
-			};
 		}
 
-		// Check if hovering over a circuit name in Circuit() calls
-		// First check if it's already in our cached definitions
-		let circuitInfoHover = circuitDefinitions.get(word) as CircuitInfo | undefined;
-		if (circuitInfoDup) {
-			const inputsStr = circuitInfoDup!.inputs.join(', ');
-			const outputsStr = circuitInfoDup!.outputs.join(', ');
-			const hoverText = `**Circuit: ${circuitInfoDup!.name}**\n\n` +
-				`**Inputs:** ${inputsStr || 'none'}\n\n` +
-				`**Outputs:** ${outputsStr || 'none'}\n\n` +
-				`*Defined in: ${path.basename(circuitInfoDup!.filePath)}*`;
-			return {
-				contents: {
-					kind: 'markdown',
-					value: hoverText
-				}
-			};
-		}		// If not found, try to get circuit info by calling C# program
-		try {
-			const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
-			const documentDir = path.dirname(documentPath);
-
-			// Path to the bundled CircuitSimulator.exe
-			const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
-
-			// Create a temporary file with the circuit content
-			const tempDir = path.join(__dirname, '..', '..', 'temp');
-			if (!fs.existsSync(tempDir)) {
-				fs.mkdirSync(tempDir, { recursive: true });
-			}
-
-			const tempFile = path.join(tempDir, `hover_${Date.now()}.circuit`);
-			fs.writeFileSync(tempFile, text);
-
-			// Call C# program with --info mode synchronously
-			const stdout = execFileSync(simulatorPath, [tempFile, '--info', `--base-path=${documentDir}`], { encoding: 'utf8' });
-
-			if (stdout) {
-				const circuitInfos: CircuitInfo[] = JSON.parse(stdout);
-				const foundCircuit = circuitInfos.find((info) => info.Name === word);
-				if (foundCircuit) {
-					const inputsStr = foundCircuit.Inputs.join(', ');
-					const outputsStr = foundCircuit.Outputs.join(', ');
-					const hoverText = `**Circuit: ${foundCircuit.Name}**\n\n` +
-						`**Inputs:** ${inputsStr || 'none'}\n\n` +
-						`**Outputs:** ${outputsStr || 'none'}\n\n` +
-						`*Defined in: ${path.basename(foundCircuit.FilePath)}*`;
-
-					// Cache the result
-					circuitDefinitions.set(word, {
-						name: foundCircuit.Name,
-						inputs: foundCircuit.Inputs,
-						outputs: foundCircuit.Outputs,
-						filePath: foundCircuit.FilePath,
-						definitionLine: foundCircuit.DefinitionLine,
-						gates: foundCircuit.Gates
-					});
-
-					// Clean up temp file
-					try {
-						fs.unlinkSync(tempFile);
-					} catch (cleanupError) {
-						// Ignore cleanup errors
-					}
-
-					return {
-						contents: {
-							kind: 'markdown',
-							value: hoverText
+		// Check if it's a gate instance
+		const circuitInfosGate = getCircuitInfo(text, documentDir);
+		if (circuitInfosGate) {
+			for (const circuitInfo of circuitInfosGate) {
+				if (circuitInfo.Gates && circuitInfo.Gates[word]) {
+					const gateType = circuitInfo.Gates[word].Type;
+					if (gateType.startsWith('Circuit:')) {
+						const circuitName = gateType.substring('Circuit:'.length);
+						// Show circuit tooltip
+						let targetCircuit = circuitDefinitions.get(circuitName);
+						if (!targetCircuit) {
+							targetCircuit = circuitInfosGate.find((c) => c.Name === circuitName);
 						}
-					};
+						if (targetCircuit) {
+							const inputsStr = targetCircuit.Inputs?.join(', ') || '';
+							const outputsStr = targetCircuit.Outputs?.join(', ') || '';
+							const hoverText = `**Circuit: ${targetCircuit.Name}**\n\n` +
+								`**Inputs:** ${inputsStr || 'none'}\n\n` +
+								`**Outputs:** ${outputsStr || 'none'}\n\n` +
+								`*Defined in: ${path.basename(targetCircuit.FilePath || '')}*`;
+							return {
+								contents: {
+									kind: 'markdown',
+									value: hoverText
+								}
+							};
+						} else {
+							return {
+								contents: {
+									kind: 'plaintext',
+									value: `Circuit not found: ${circuitName}`
+								}
+							};
+						}
+					} else {
+						// Built-in gate
+						const gateTooltip = gateInfo[gateType];
+						if (gateTooltip) {
+							return {
+								contents: {
+									kind: 'markdown',
+									value: gateTooltip
+								}
+							};
+						} else {
+							return {
+								contents: {
+									kind: 'plaintext',
+									value: `Unknown gate type: ${gateType}`
+								}
+							};
+						}
+					}
 				}
 			}
-
-			// Clean up temp file
-			try {
-				fs.unlinkSync(tempFile);
-			} catch (cleanupError) {
-				// Ignore cleanup errors
-			}
-		} catch (error) {
-			// Silently ignore errors for hover functionality
 		}
 
 		return null;
@@ -759,53 +650,258 @@ connection.onDefinition(
 
 		const word = text.substring(wordRange.start, wordRange.end);
 
+		// Check if this is a connection reference like gateName.in.portName or gateName.out.portName
+		const connectionRef = parseConnectionReference(text, offset);
+		console.log(`Parsed connection reference: ${JSON.stringify(connectionRef)} from word "${word}"`);
+		if (connectionRef) {
+			if (connectionRef.target === 'gate') {
+				// Navigate to the gate definition in the current circuit
+				const documentPathGate = url.fileURLToPath(textDocumentPosition.textDocument.uri);
+				const documentDirGate = path.dirname(documentPathGate);
+				const circuitInfosGate = getCircuitInfo(text, documentDirGate);
+				if (circuitInfosGate) {
+					// Find the gate definition in any circuit
+					for (const circuitInfo of circuitInfosGate) {
+						if (circuitInfo.Gates && circuitInfo.Gates[connectionRef.gateName]) {
+							const gateInfo = circuitInfo.Gates[connectionRef.gateName];
+							const definitionLine = gateInfo.DefinitionLine - 1;
+
+							let targetFilePath = circuitInfo.FilePath;
+							if (circuitInfo.FilePath === 'temp') { // Since we don't create temp file anymore
+								targetFilePath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
+							}
+
+							try {
+								const fileContent = fs.readFileSync(targetFilePath, 'utf8');
+								const lines = fileContent.split('\n');
+								const lineContent = lines[definitionLine];
+								if (lineContent) {
+									const gateRange = parseGateDeclaration(lineContent, connectionRef.gateName);
+									if (gateRange) {
+										console.log(`Returning range for gate ${connectionRef.gateName}: uri=${url.pathToFileURL(targetFilePath).toString()}, line=${definitionLine}, chars=${gateRange.start}-${gateRange.end}`);
+										return {
+											uri: url.pathToFileURL(targetFilePath).toString(),
+											range: {
+												start: { line: definitionLine, character: gateRange.start },
+												end: { line: definitionLine, character: gateRange.end }
+											}
+										};
+									}
+								}
+							} catch (error) {
+								// Fall back to hardcoded range if file reading fails
+							}
+
+							// Fallback to hardcoded range
+							console.log(`Returning fallback range for gate ${connectionRef.gateName}: uri=${url.pathToFileURL(targetFilePath).toString()}, line=${definitionLine}`);
+							return {
+								uri: url.pathToFileURL(targetFilePath).toString(),
+								range: {
+									start: { line: definitionLine, character: 0 },
+									end: { line: definitionLine, character: connectionRef.gateName.length }
+								}
+							};
+						}
+					}
+				}
+			} else if (connectionRef.target === 'port') {
+				// Navigate to the port in the referenced circuit (existing logic)
+				const documentPathPort = url.fileURLToPath(textDocumentPosition.textDocument.uri);
+				const documentDirPort = path.dirname(documentPathPort);
+				const circuitInfosPort = getCircuitInfo(text, documentDirPort);
+				if (circuitInfosPort) {
+					// Find the gate definition
+					let targetCircuit: CircuitInfo | undefined;
+					let gateType: string | undefined;
+
+					for (const circuitInfo of circuitInfosPort) {
+						if (circuitInfo.Gates && circuitInfo.Gates[connectionRef.gateName]) {
+							gateType = circuitInfo.Gates[connectionRef.gateName].Type;
+							break;
+						}
+					}
+
+					if (gateType && gateType.startsWith('Circuit:')) {
+						const referencedCircuitName = gateType.substring('Circuit:'.length);
+
+						// Find the referenced circuit
+						let targetCircuit = circuitInfosPort.find(c => c.Name === referencedCircuitName);
+
+						// Fallback to circuitDefinitions if not found in circuitInfos
+						if (!targetCircuit) {
+							const circuit = circuitDefinitions.get(referencedCircuitName);
+							if (circuit) {
+								targetCircuit = {
+									Name: circuit.name,
+									Inputs: circuit.inputs,
+									Outputs: circuit.outputs,
+									FilePath: circuit.filePath,
+									DefinitionLine: circuit.definitionLine,
+									Gates: circuit.gates
+								};
+							}
+						}
+
+						if (targetCircuit) {
+							let targetFilePath = targetCircuit.FilePath;
+							if (targetCircuit.FilePath === 'temp') { // Since we don't create temp file anymore
+								targetFilePath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
+							}
+
+							// Read the target circuit file
+							const fileContent = fs.readFileSync(targetFilePath, 'utf8');
+							const lines = fileContent.split('\n');
+
+							// Find the inputs or outputs block
+							const blockType = connectionRef.direction === 'in' ? 'inputs' : 'outputs';
+							let blockStartLine = -1;
+							let blockEndLine = -1;
+
+							for (let i = 0; i < lines.length; i++) {
+								const line = lines[i];
+								if (line.includes(`${blockType} {`)) {
+									blockStartLine = i;
+									// Find the closing brace
+									let braceCount = 0;
+									for (let j = i; j < lines.length; j++) {
+										const innerLine = lines[j];
+										braceCount += (innerLine.match(/\{/g) || []).length;
+										braceCount -= (innerLine.match(/\}/g) || []).length;
+										if (braceCount === 0) {
+											blockEndLine = j;
+											break;
+										}
+									}
+									break;
+								}
+							}
+
+							if (blockStartLine !== -1) {
+								// Try to find the specific port if portName is provided
+								if (connectionRef.portName) {
+									const blockContent = lines.slice(blockStartLine, blockEndLine + 1).join('\n');
+									const portPos = findPortInBlock(blockContent, connectionRef.portName);
+									console.log(`Searching for port "${connectionRef.portName}" (length: ${connectionRef.portName.length}) in ${blockType} block from line ${blockStartLine} to ${blockEndLine} in file ${targetFilePath}`);
+
+									if (portPos) {
+										// Calculate the absolute position in the block content
+										const portLineIndex = blockContent.substring(0, portPos.start).split('\n').length - 1;
+										const portLine = lines[blockStartLine + portLineIndex];
+										let portInLinePos = findPortInBlock(portLine, connectionRef.portName);
+										
+										// Fallback for single-line blocks: use portPos directly if portInLinePos is null
+										if (!portInLinePos && blockStartLine === blockEndLine) {
+											portInLinePos = portPos;
+										}
+										
+										console.log(`Port ${connectionRef.portName} found in line: ${portLine} at positions ${portInLinePos?.start}-${portInLinePos?.end}`);
+
+										if (portInLinePos) {
+											const uri = url.pathToFileURL(targetFilePath).toString();
+											const range = {
+												start: { line: blockStartLine + portLineIndex, character: portInLinePos.start },
+												end: { line: blockStartLine + portLineIndex, character: portInLinePos.end }
+											};
+											console.log(`Returning range for port ${connectionRef.portName}: uri=${uri}, line=${range.start.line}, chars=${range.start.character}-${range.end.character}`);
+											return {
+												uri,
+												range
+											};
+										}
+									}
+								}
+
+								// Fallback: go to the block type name
+								console.log("Fallback to block name");
+								const lineContent = lines[blockStartLine];
+								const blockStartChar = lineContent.indexOf(blockType);
+								const uri = url.pathToFileURL(targetFilePath).toString();
+								const range = {
+									start: { line: blockStartLine, character: blockStartChar },
+									end: { line: blockStartLine, character: blockStartChar + blockType.length }
+								};
+								console.log(`Returning range for ${blockType} block: uri=${uri}, line=${range.start.line}, chars=${range.start.character}-${range.end.character}`);
+								return {
+									uri,
+									range
+								};
+							}
+						}
+					}
+				}
+			}
+		}
+
 		// Check if it's a circuit name that we can find the definition for
-		try {
-			const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
-			const documentDir = path.dirname(documentPath);
+		const documentPathCircuit = url.fileURLToPath(textDocumentPosition.textDocument.uri);
+		const documentDirCircuit = path.dirname(documentPathCircuit);
+		const circuitInfosCircuit = getCircuitInfo(text, documentDirCircuit);
+		if (circuitInfosCircuit) {
+			const foundCircuit = circuitInfosCircuit.find((info) => info.Name === word);
+			if (foundCircuit) {
+				// Convert the file path to a URI
+				let targetFilePath = foundCircuit.FilePath;
+				if (foundCircuit.FilePath === 'temp') { // Since we don't create temp file anymore
+					targetFilePath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
+				}
+				const definitionUri = url.pathToFileURL(targetFilePath).toString();
 
-			// Path to the bundled CircuitSimulator.exe
-			const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
+				// Use the exact definition line (convert from 1-based to 0-based for LSP)
+				const definitionLine = foundCircuit.DefinitionLine - 1;
 
-			// Create a temporary file with the circuit content
-			const tempDir = path.join(__dirname, '..', '..', 'temp');
-			if (!fs.existsSync(tempDir)) {
-				fs.mkdirSync(tempDir, { recursive: true });
+				// Read the file to get the exact line content for dynamic range calculation
+				try {
+					const fileContent = fs.readFileSync(targetFilePath, 'utf8');
+					const lines = fileContent.split('\n');
+					const lineContent = lines[definitionLine];
+					if (lineContent) {
+						const circuitRange = parseCircuitDeclaration(lineContent, foundCircuit.Name);
+						if (circuitRange) {
+							return {
+								uri: definitionUri,
+								range: {
+									start: { line: definitionLine, character: circuitRange.start },
+									end: { line: definitionLine, character: circuitRange.end }
+								}
+							};
+						}
+					}
+				} catch (error) {
+					// Fall back to hardcoded range if file reading fails
+				}
+
+				// Fallback to hardcoded range
+				return {
+					uri: definitionUri,
+					range: {
+						start: { line: definitionLine, character: 8 },
+						end: { line: definitionLine, character: 50 }
+					}
+				};
 			}
 
-			const tempFile = path.join(tempDir, `def_${Date.now()}.circuit`);
-			fs.writeFileSync(tempFile, text);
-
-			// Call C# program with --info mode synchronously
-			const stdout = execFileSync(simulatorPath, [tempFile, '--info', `--base-path=${documentDir}`], { encoding: 'utf8' });
-
-			if (stdout) {
-				const circuitInfos: CircuitInfo[] = JSON.parse(stdout);
-				const foundCircuit = circuitInfos.find((info) => info.Name === word);
-				if (foundCircuit) {
-					// Convert the file path to a URI
-					let targetFilePath = foundCircuit.FilePath;
-					if (foundCircuit.FilePath === tempFile) {
-						targetFilePath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
-					}
-					const definitionUri = url.pathToFileURL(targetFilePath).toString();
-
-					// Use the exact definition line (convert from 1-based to 0-based for LSP)
-					const definitionLine = foundCircuit.DefinitionLine - 1;
-
-					// Read the file to get the exact line content for dynamic range calculation
+			// Check if it's a gate in any circuit
+			for (const info of circuitInfosCircuit) {
+				if (info.Gates && info.Gates[word]) {
+					const definitionLine = info.Gates[word].DefinitionLine - 1;
+					// Read the file to get the exact line content
 					try {
+						// For gates in the current file, use the original document path instead of the temp file path
+						let targetFilePath = info.FilePath;
+						if (info.FilePath === 'temp') { // Since we don't create temp file anymore
+							targetFilePath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
+						}
 						const fileContent = fs.readFileSync(targetFilePath, 'utf8');
 						const lines = fileContent.split('\n');
 						const lineContent = lines[definitionLine];
 						if (lineContent) {
-							const circuitRange = parseCircuitDeclaration(lineContent, foundCircuit.Name);
-							if (circuitRange) {
+							const gateRange = parseGateDeclaration(lineContent, word);
+							if (gateRange) {
 								return {
-									uri: definitionUri,
+									uri: url.pathToFileURL(targetFilePath).toString(),
 									range: {
-										start: { line: definitionLine, character: circuitRange.start },
-										end: { line: definitionLine, character: circuitRange.end }
+										start: { line: definitionLine, character: gateRange.start },
+										end: { line: definitionLine, character: gateRange.end }
 									}
 								};
 							}
@@ -813,66 +909,16 @@ connection.onDefinition(
 					} catch (error) {
 						// Fall back to hardcoded range if file reading fails
 					}
-
 					// Fallback to hardcoded range
 					return {
-						uri: definitionUri,
+						uri: textDocumentPosition.textDocument.uri,
 						range: {
-							start: { line: definitionLine, character: 8 },
-							end: { line: definitionLine, character: 50 }
+							start: { line: definitionLine, character: 0 },
+							end: { line: definitionLine, character: word.length }
 						}
 					};
 				}
-
-				// Check if it's a gate in any circuit
-				for (const info of circuitInfos) {
-					if (info.Gates && info.Gates[word]) {
-						const definitionLine = info.Gates[word].DefinitionLine - 1;
-						// Read the file to get the exact line content
-						try {
-							// For gates in the current file, use the original document path instead of the temp file path
-							let targetFilePath = info.FilePath;
-							if (info.FilePath === tempFile) {
-								targetFilePath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
-							}
-							const fileContent = fs.readFileSync(targetFilePath, 'utf8');
-							const lines = fileContent.split('\n');
-							const lineContent = lines[definitionLine];
-							if (lineContent) {
-								const gateRange = parseGateDeclaration(lineContent, word);
-								if (gateRange) {
-									return {
-										uri: url.pathToFileURL(targetFilePath).toString(),
-										range: {
-											start: { line: definitionLine, character: gateRange.start },
-											end: { line: definitionLine, character: gateRange.end }
-										}
-									};
-								}
-							}
-						} catch (error) {
-							// Fall back to hardcoded range if file reading fails
-						}
-						// Fallback to hardcoded range
-						return {
-							uri: textDocumentPosition.textDocument.uri,
-							range: {
-								start: { line: definitionLine, character: 0 },
-								end: { line: definitionLine, character: word.length }
-							}
-						};
-					}
-				}
 			}
-
-			// Clean up temp file
-			try {
-				fs.unlinkSync(tempFile);
-			} catch (cleanupError) {
-				// Ignore cleanup errors
-			}
-		} catch (error) {
-			// Silently ignore errors for definition functionality
 		}
 
 		return null;
@@ -917,6 +963,84 @@ function parseCircuitDeclaration(line: string, circuitName: string): { start: nu
 		const startPos = match[1].length + 'circuit '.length; // After "circuit "
 		const endPos = startPos + circuitName.length;
 		return { start: startPos, end: endPos };
+	}
+	return null;
+}
+
+// Helper function to parse connection references like gateName.in.portName
+function parseConnectionReference(text: string, offset: number): { target: 'gate' | 'port'; gateName: string; direction?: 'in' | 'out'; portName?: string } | null {
+	// Find all connection references that contain the cursor position
+	const allMatches: Array<{match: RegExpExecArray, direction: 'in' | 'out', hasPort: boolean}> = [];
+
+	const inPattern = /(\w+)\.in\.(\w+)/g;
+	const outPattern = /(\w+)\.out\.(\w+)/g;
+	const inOnlyPattern = /(\w+)\.in\b/g;
+	const outOnlyPattern = /(\w+)\.out\b/g;
+
+	let match;
+
+	// Find all matches that contain the cursor
+	while ((match = inPattern.exec(text)) !== null) {
+		if (match.index <= offset && offset <= match.index + match[0].length) {
+			allMatches.push({match, direction: 'in', hasPort: true});
+		}
+	}
+
+	while ((match = outPattern.exec(text)) !== null) {
+		if (match.index <= offset && offset <= match.index + match[0].length) {
+			allMatches.push({match, direction: 'out', hasPort: true});
+		}
+	}
+
+	while ((match = inOnlyPattern.exec(text)) !== null) {
+		if (match.index <= offset && offset <= match.index + match[0].length) {
+			allMatches.push({match, direction: 'in', hasPort: false});
+		}
+	}
+
+	while ((match = outOnlyPattern.exec(text)) !== null) {
+		if (match.index <= offset && offset <= match.index + match[0].length) {
+			allMatches.push({match, direction: 'out', hasPort: false});
+		}
+	}
+
+	// Find the best match (prefer longer port names)
+	let bestMatch: { target: 'gate' | 'port'; gateName: string; direction?: 'in' | 'out'; portName?: string } | null = null;
+
+	for (const m of allMatches) {
+		const portName = m.hasPort ? m.match[2] : undefined;
+		const gateName = m.match[1];
+		const direction = m.direction;
+		const matchStr = m.match[0];
+		const matchStart = m.match.index;
+
+		// Determine which part the cursor is on
+		let target: 'gate' | 'port' = 'port'; // default to port
+		const gateEnd = matchStart + gateName.length;
+		const portStart = matchStart + matchStr.lastIndexOf('.') + 1;
+
+		if (offset <= gateEnd) {
+			target = 'gate';
+		} else if (portName && offset >= portStart) {
+			target = 'port';
+		}
+
+		// Prefer matches where the target matches the cursor position
+		if (!bestMatch || (portName && (!bestMatch.portName || portName.length > bestMatch.portName.length))) {
+			bestMatch = { target, gateName, direction, portName };
+		}
+	}
+
+	return bestMatch;
+}
+
+// Helper function to find port position in inputs/outputs block
+function findPortInBlock(blockContent: string, portName: string): { start: number; end: number } | null {
+	// Look for the port name in the block, handling spaces and commas
+	const portPattern = new RegExp(`\\b${portName}\\b`, 'g');
+	const match = portPattern.exec(blockContent);
+	if (match) {
+		return { start: match.index, end: match.index + portName.length };
 	}
 	return null;
 }

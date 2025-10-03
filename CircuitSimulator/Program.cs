@@ -201,7 +201,7 @@ namespace CircuitSimulator
                             Outputs = circuitEntry.Value.OutputNames,
                             FilePath = circuitEntry.Value.FilePath,
                             DefinitionLine = circuitEntry.Value.DefinitionLine,
-                            Gates = circuitEntry.Value.NamedGates.ToDictionary(g => g.Key, g => new GateInfo { Type = g.Value.Type, DefinitionLine = g.Value.DefinitionLine })
+                            Gates = circuitEntry.Value.NamedGates.Where(g=>!string.IsNullOrEmpty(g.Value.Type)).ToDictionary(g => g.Key, g => new GateInfo { Type = g.Value.Type, DefinitionLine = g.Value.DefinitionLine })
                         });
                     }
                 }
