@@ -21,6 +21,7 @@ namespace CircuitSimulator
         public List<string> Inputs { get; set; } = new List<string>();
         public List<string> Outputs { get; set; } = new List<string>();
         public string FilePath { get; set; } = "";
+        public int DefinitionLine { get; set; } = 0;
     }
 
     class Program
@@ -126,7 +127,7 @@ namespace CircuitSimulator
                 {
                     var lexer = new Lexer(dsl);
                     var tokens = lexer.Tokenize().ToList();
-                    var parser = new Parser(tokens, basePath);
+                    var parser = new Parser(tokens, basePath, dslFile);
                     var circuits = parser.ParseCircuits();
                     // If parsing succeeds, no diagnostics
                 }
@@ -181,7 +182,7 @@ namespace CircuitSimulator
                 {
                     var lexer = new Lexer(dsl);
                     var tokens = lexer.Tokenize().ToList();
-                    var parser = new Parser(tokens, basePath);
+                    var parser = new Parser(tokens, basePath, dslFile);
                     var circuits = parser.ParseCircuits();
                     
                     foreach (var circuitEntry in circuits)
@@ -191,7 +192,8 @@ namespace CircuitSimulator
                             Name = circuitEntry.Key,
                             Inputs = circuitEntry.Value.InputNames,
                             Outputs = circuitEntry.Value.OutputNames,
-                            FilePath = dslFile
+                            FilePath = circuitEntry.Value.FilePath,
+                            DefinitionLine = circuitEntry.Value.DefinitionLine
                         });
                     }
                 }
@@ -211,7 +213,7 @@ namespace CircuitSimulator
             {
                 var lexer = new Lexer(dsl);
                 var tokens = lexer.Tokenize().ToList();
-                var parser = new Parser(tokens, basePath);
+                var parser = new Parser(tokens, basePath, dslFile);
                 var circuits = parser.ParseCircuits();
                 circuit = circuits.LastOrDefault().Value;
             }

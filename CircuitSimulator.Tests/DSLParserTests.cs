@@ -26,7 +26,7 @@ circuit TestCircuit {
 ";
             var lexer = new Lexer(dsl);
             var tokens = lexer.Tokenize().ToList();
-            var parser = new Parser(tokens, ".");
+            var parser = new Parser(tokens, ".", "test.circuit");
             var circuits = parser.ParseCircuits();
             var circuit = circuits.LastOrDefault().Value;
 
@@ -55,7 +55,7 @@ circuit TestCircuit {
 ";
             var lexer = new Lexer(dsl);
             var tokens = lexer.Tokenize().ToList();
-            var parser = new Parser(tokens, ".");
+            var parser = new Parser(tokens, ".", "test.circuit");
             var circuits = parser.ParseCircuits();
             var circuit = circuits.LastOrDefault().Value;
 
@@ -83,7 +83,7 @@ circuit TestCircuit {
 ";
             var lexer = new Lexer(dsl);
             var tokens = lexer.Tokenize().ToList();
-            var parser = new Parser(tokens, ".");
+            var parser = new Parser(tokens, ".", "test.circuit");
             var circuits = parser.ParseCircuits();
             var circuit = circuits.LastOrDefault().Value;
 
@@ -114,7 +114,7 @@ circuit TestCircuit {
 ";
             var lexer = new Lexer(dsl);
             var tokens = lexer.Tokenize().ToList();
-            var parser = new Parser(tokens, ".");
+            var parser = new Parser(tokens, ".", "test.circuit");
             var circuits = parser.ParseCircuits();
             var circuit = circuits.LastOrDefault().Value;
 
@@ -153,7 +153,7 @@ circuit TestCircuit {
 ";
             var lexer = new Lexer(dsl);
             var tokens = lexer.Tokenize().ToList();
-            var parser = new Parser(tokens, ".");
+            var parser = new Parser(tokens, ".", "test.circuit");
             var circuits = parser.ParseCircuits();
             var circuit = circuits.LastOrDefault().Value;
 

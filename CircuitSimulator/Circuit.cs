@@ -8,6 +8,8 @@ namespace CircuitSimulator
     public class Circuit
     {
         public string Name { get; set; } = "";
+        public string FilePath { get; set; } = "";
+        public int DefinitionLine { get; set; } = 0;
         public List<Gate> Gates { get; } = new List<Gate>();
         // Connections: key is the gate, value is list of sources (Gate or string for external input)
         public Dictionary<Gate, List<object?>> Connections { get; } = new Dictionary<Gate, List<object?>>();

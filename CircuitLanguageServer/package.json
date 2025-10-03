@@ -44,7 +44,8 @@
     "out/**/*",
     "syntaxes/**/*",
     "language-configuration.json",
-    "bin/**/*"
+    "bin/**/*",
+    "LICENSE"
   ],
   "scripts": {
     "vscode:prepublish": "npm run compile && npm run copy-bin",

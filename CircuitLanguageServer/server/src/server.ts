@@ -28,6 +28,7 @@ interface CircuitInfo {
 	inputs: string[];
 	outputs: string[];
 	filePath: string;
+	definitionLine: number;
 }
 
 // Create a connection for the server, using Node's IPC as a transport.
@@ -418,7 +419,8 @@ function parseCircuitDefinitions(filePath: string, basePath: string): void {
 							name: info.Name,
 							inputs: info.Inputs,
 							outputs: info.Outputs,
-							filePath: info.FilePath
+							filePath: info.FilePath,
+							definitionLine: info.DefinitionLine
 						});
 					}
 				}
@@ -540,7 +542,8 @@ connection.onHover(
 						name: foundCircuit.Name,
 						inputs: foundCircuit.Inputs,
 						outputs: foundCircuit.Outputs,
-						filePath: foundCircuit.FilePath
+						filePath: foundCircuit.FilePath,
+						definitionLine: foundCircuit.DefinitionLine
 					});
 					
 					// Clean up temp file
@@ -620,13 +623,13 @@ connection.onDefinition(
 					// Convert the file path to a URI
 					const definitionUri = url.pathToFileURL(foundCircuit.FilePath).toString();
 					
-					// For now, return a location at the beginning of the file
-					// In a more sophisticated implementation, we could parse the exact line
+					// Use the exact definition line (convert from 1-based to 0-based for LSP)
+					const definitionLine = foundCircuit.DefinitionLine - 1;
 					return {
 						uri: definitionUri,
 						range: {
-							start: { line: 0, character: 0 },
-							end: { line: 0, character: 1 }
+							start: { line: definitionLine, character: 0 },
+							end: { line: definitionLine, character: 1 }
 						}
 					};
 				}

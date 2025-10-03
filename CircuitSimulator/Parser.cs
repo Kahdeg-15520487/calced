@@ -44,12 +44,14 @@ namespace CircuitSimulator
         private readonly List<Token> _tokens;
         private int _current;
         private readonly string _basePath;
+        private readonly string _filePath;
 
-        public Parser(List<Token> tokens, string basePath)
+        public Parser(List<Token> tokens, string basePath, string filePath)
         {
             _tokens = tokens;
             _current = 0;
             _basePath = basePath;
+            _filePath = filePath;
         }
 
         public Dictionary<string, Circuit> ParseCircuits()
@@ -64,7 +66,8 @@ namespace CircuitSimulator
                 }
                 else if (Match(TokenType.CIRCUIT))
                 {
-                    var circuit = ParseCircuit(circuits);
+                    var definitionLine = Previous().Line;
+                    var circuit = ParseCircuit(circuits, definitionLine);
                     circuits[circuit.Name] = circuit;
                 }
                 else
@@ -88,7 +91,7 @@ namespace CircuitSimulator
 
                 var lexer = new Lexer(importedDsl);
                 var tokens = lexer.Tokenize().ToList();
-                var parser = new Parser(tokens, _basePath);
+                var parser = new Parser(tokens, _basePath, importPath);
                 var importedCircuits = parser.ParseCircuits();
 
                 foreach (var kvp in importedCircuits)
@@ -102,12 +105,16 @@ namespace CircuitSimulator
             }
         }
 
-        private Circuit ParseCircuit(Dictionary<string, Circuit> circuits)
+        private Circuit ParseCircuit(Dictionary<string, Circuit> circuits, int definitionLine)
         {
             Consume(TokenType.IDENTIFIER, "Expected circuit name");
             string circuitName = Previous().Value;
 
-            var circuit = new Circuit { Name = circuitName };
+            var circuit = new Circuit { 
+                Name = circuitName,
+                FilePath = _filePath,
+                DefinitionLine = definitionLine
+            };
 
             Consume(TokenType.LBRACE, "Expected '{' after circuit name");
 
