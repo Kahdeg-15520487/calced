@@ -71,7 +71,9 @@ connection.onInitialize((params: InitializeParams) => {
 				triggerCharacters: ['.', '-', '>', '=']
 			},
 			// Enable hover support
-			hoverProvider: true
+			hoverProvider: true,
+			// Enable definition support
+			definitionProvider: true
 		}
 	};
 	if (hasWorkspaceFolderCapability) {
@@ -565,6 +567,79 @@ connection.onHover(
 			}
 		} catch (error) {
 			// Silently ignore errors for hover functionality
+		}
+
+		return null;
+	}
+);
+
+// Definition support for go to definition
+connection.onDefinition(
+	(textDocumentPosition: TextDocumentPositionParams) => {
+		const document = documents.get(textDocumentPosition.textDocument.uri);
+		if (!document) {
+			return null;
+		}
+
+		const position = textDocumentPosition.position;
+		const text = document.getText();
+		const offset = document.offsetAt(position);
+		
+		// Find the word at cursor position
+		const wordRange = getWordRangeAtPosition(text, offset);
+		if (!wordRange) {
+			return null;
+		}
+		
+		const word = text.substring(wordRange.start, wordRange.end);
+		
+		// Check if it's a circuit name that we can find the definition for
+		try {
+			const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
+			const documentDir = path.dirname(documentPath);
+			
+			// Path to the bundled CircuitSimulator.exe
+			const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
+			
+			// Create a temporary file with the circuit content
+			const tempDir = path.join(__dirname, '..', '..', 'temp');
+			if (!fs.existsSync(tempDir)) {
+				fs.mkdirSync(tempDir, { recursive: true });
+			}
+			
+			const tempFile = path.join(tempDir, `def_${Date.now()}.circuit`);
+			fs.writeFileSync(tempFile, text);
+
+			// Call C# program with --info mode synchronously
+			const stdout = execFileSync(simulatorPath, [tempFile, '--info', `--base-path=${documentDir}`], { encoding: 'utf8' });
+			
+			if (stdout) {
+				const circuitInfos = JSON.parse(stdout);
+				const foundCircuit = circuitInfos.find((info: any) => info.Name === word);
+				if (foundCircuit) {
+					// Convert the file path to a URI
+					const definitionUri = url.pathToFileURL(foundCircuit.FilePath).toString();
+					
+					// For now, return a location at the beginning of the file
+					// In a more sophisticated implementation, we could parse the exact line
+					return {
+						uri: definitionUri,
+						range: {
+							start: { line: 0, character: 0 },
+							end: { line: 0, character: 1 }
+						}
+					};
+				}
+			}
+			
+			// Clean up temp file
+			try {
+				fs.unlinkSync(tempFile);
+			} catch (cleanupError) {
+				// Ignore cleanup errors
+			}
+		} catch (error) {
+			// Silently ignore errors for definition functionality
 		}
 
 		return null;
