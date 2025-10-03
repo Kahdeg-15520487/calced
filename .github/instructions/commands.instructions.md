@@ -3,7 +3,8 @@ applyTo: '**'
 ---
 Provide project context and coding guidelines that AI should follow when generating code, answering questions, or reviewing changes.
 
-run the project with `dotnet run CircuitSimulator` in the root directory.
+run the project with `dotnet run --no-launch-profile CircuitSimulator` in the root directory.
+run synthesize mode with `dotnet run --no-launch-profile --project CircuitSimulator --synthesize=<logical expression>` in the root directory.
 run the tests with `dotnet test` in the root directory.
 
 build the language server with `npm run build` in the `CircuitLanguageServer` directory.

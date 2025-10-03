@@ -1,8 +1,4 @@
-﻿using System;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
-using System.Collections.Generic;
+﻿using System.Text.Json;
 
 namespace CircuitSimulator
 {
@@ -88,134 +84,139 @@ namespace CircuitSimulator
                 }
             }
         }
-        static void Main(string[] args)
+
+        static void RunVerifyMode(string dslFile, string basePath)
         {
-            if (args.Length == 0)
+            // LSP verification mode - return JSON diagnostics
+            var diagnostics = new List<DiagnosticInfo>();
+
+            try
             {
-                Console.WriteLine("Usage: CircuitSimulator <dsl-file> [--<input>=<value>]... [--ticks=N] [--verify] [--info]");
-                Console.WriteLine("Examples:");
-                Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --ticks=10");
-                Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --b=false --ticks=5");
-                Console.WriteLine("  CircuitSimulator circuit.circuit --verify  # For LSP validation");
-                Console.WriteLine("  CircuitSimulator circuit.circuit --info    # For LSP hover info");
-                return;
+                var lexer = new Lexer(dslFile);
+                var tokens = lexer.Tokenize().ToList();
+                var parser = new Parser(tokens, basePath, dslFile);
+                var circuits = parser.ParseCircuits();
+                // If parsing succeeds, no diagnostics
+            }
+            catch (DSLParseException ex)
+            {
+                // Extract the specific error message
+                string message = ex.Message;
+                
+                // For syntax errors with position info, extract just the reason
+                if (message.Contains("Invalid syntax at line ") && message.Contains(": "))
+                {
+                    // Extract the part after "Invalid syntax at line X, column Y: "
+                    int colonIndex = message.LastIndexOf(": ");
+                    if (colonIndex > 0)
+                    {
+                        message = message.Substring(colonIndex + 2);
+                    }
+                }
+                // For other errors (connection, gate, etc.), use the full message
+
+                diagnostics.Add(new DiagnosticInfo
+                {
+                    Message = message,
+                    Line = ex.Line > 0 ? ex.Line - 1 : 0, // Convert to 0-based for LSP, default to 0 if no position
+                    Column = ex.Column > 0 ? ex.Column - 1 : 0, // Convert to 0-based for LSP, default to 0 if no position
+                    Length = Math.Max(1, message.Length / 10), // Approximate length
+                    Severity = "error"
+                });
+            }
+            catch (Exception ex)
+            {
+                diagnostics.Add(new DiagnosticInfo
+                {
+                    Message = $"Unexpected error: {ex.Message}",
+                    Line = 0,
+                    Column = 0,
+                    Length = 1,
+                    Severity = "error"
+                });
             }
 
-            var dslFile = args[0];
-            var isVerifyMode = args.Contains("--verify");
-            var isInfoMode = args.Contains("--info");
-            
-            // Parse --base-path argument
-            string? customBasePath = null;
-            for (int i = 1; i < args.Length; i++)
+            Console.WriteLine(JsonSerializer.Serialize(diagnostics, new JsonSerializerOptions { WriteIndented = false }));
+        }
+
+        static void RunInfoMode(string dslFile, string basePath)
+        {
+            // LSP info mode - return JSON circuit definitions
+            var circuitInfos = new List<CircuitInfo>();
+
+            try
             {
-                if (args[i].StartsWith("--base-path="))
+                var lexer = new Lexer(dslFile);
+                var tokens = lexer.Tokenize().ToList();
+                var parser = new Parser(tokens, basePath, dslFile);
+                var circuits = parser.ParseCircuits();
+                
+                foreach (var circuitEntry in circuits)
                 {
-                    customBasePath = args[i].Substring("--base-path=".Length);
-                    break;
+                    circuitInfos.Add(new CircuitInfo
+                    {
+                        Name = circuitEntry.Key,
+                        Inputs = circuitEntry.Value.InputNames,
+                        Outputs = circuitEntry.Value.OutputNames,
+                        FilePath = circuitEntry.Value.FilePath,
+                        DefinitionLine = circuitEntry.Value.DefinitionLine,
+                        Gates = circuitEntry.Value.NamedGates.Where(g=>!string.IsNullOrEmpty(g.Value.Type)).ToDictionary(g => g.Key, g => new GateInfo { Type = g.Value.Type, DefinitionLine = g.Value.DefinitionLine })
+                    });
                 }
             }
-            
-            if (!File.Exists(dslFile))
+            catch (Exception)
             {
-                Console.WriteLine($"File not found: {dslFile}");
-                return;
+                // If parsing fails, return empty list
+                circuitInfos = new List<CircuitInfo>();
             }
 
+            Console.WriteLine(JsonSerializer.Serialize(circuitInfos, new JsonSerializerOptions { WriteIndented = false }));
+        }
+
+        static void RunSynthesizeMode(string expression, string? outFile)
+        {
+            try
+            {
+                var builder = new Synthesizer();
+                string synthesizedDsl = builder.GenerateDSL("SynthesizedCircuit", expression);
+                
+                // Verify the synthesized DSL by parsing it
+                try
+                {
+                    var lexer = new Lexer(synthesizedDsl);
+                    var tokens = lexer.Tokenize().ToList();
+                    var parser = new Parser(tokens, ".", "synthesized.circuit");
+                    var circuits = parser.ParseCircuits();
+                    // If parsing succeeds, the DSL is valid
+                }
+                catch (Exception parseEx)
+                {
+                    Console.WriteLine($"Synthesis error: Generated DSL is invalid - {parseEx.Message}");
+                    Console.WriteLine("Generated DSL:");
+                    Console.WriteLine(synthesizedDsl);
+                    return;
+                }
+                
+                if (outFile != null)
+                {
+                    File.WriteAllText(outFile, synthesizedDsl);
+                    Console.WriteLine($"Synthesized circuit saved to {outFile}");
+                }
+                else
+                {
+                    Console.WriteLine(synthesizedDsl);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Synthesis error: {ex.Message}");
+            }
+        }
+
+        static void RunSimulationMode(string dslFile, string basePath, string[] args)
+        {
             var dsl = File.ReadAllText(dslFile);
-            var basePath = customBasePath ?? Path.GetDirectoryName(Path.GetFullPath(dslFile)) ?? ".";
 
-            if (isVerifyMode)
-            {
-                // LSP verification mode - return JSON diagnostics
-                var diagnostics = new List<DiagnosticInfo>();
-
-                try
-                {
-                    var lexer = new Lexer(dsl);
-                    var tokens = lexer.Tokenize().ToList();
-                    var parser = new Parser(tokens, basePath, dslFile);
-                    var circuits = parser.ParseCircuits();
-                    // If parsing succeeds, no diagnostics
-                }
-                catch (DSLParseException ex)
-                {
-                    // Extract the specific error message
-                    string message = ex.Message;
-                    
-                    // For syntax errors with position info, extract just the reason
-                    if (message.Contains("Invalid syntax at line ") && message.Contains(": "))
-                    {
-                        // Extract the part after "Invalid syntax at line X, column Y: "
-                        int colonIndex = message.LastIndexOf(": ");
-                        if (colonIndex > 0)
-                        {
-                            message = message.Substring(colonIndex + 2);
-                        }
-                    }
-                    // For other errors (connection, gate, etc.), use the full message
-
-                    diagnostics.Add(new DiagnosticInfo
-                    {
-                        Message = message,
-                        Line = ex.Line > 0 ? ex.Line - 1 : 0, // Convert to 0-based for LSP, default to 0 if no position
-                        Column = ex.Column > 0 ? ex.Column - 1 : 0, // Convert to 0-based for LSP, default to 0 if no position
-                        Length = Math.Max(1, message.Length / 10), // Approximate length
-                        Severity = "error"
-                    });
-                }
-                catch (Exception ex)
-                {
-                    diagnostics.Add(new DiagnosticInfo
-                    {
-                        Message = $"Unexpected error: {ex.Message}",
-                        Line = 0,
-                        Column = 0,
-                        Length = 1,
-                        Severity = "error"
-                    });
-                }
-
-                Console.WriteLine(JsonSerializer.Serialize(diagnostics, new JsonSerializerOptions { WriteIndented = false }));
-                return;
-            }
-
-            if (isInfoMode)
-            {
-                // LSP info mode - return JSON circuit definitions
-                var circuitInfos = new List<CircuitInfo>();
-
-                try
-                {
-                    var lexer = new Lexer(dsl);
-                    var tokens = lexer.Tokenize().ToList();
-                    var parser = new Parser(tokens, basePath, dslFile);
-                    var circuits = parser.ParseCircuits();
-                    
-                    foreach (var circuitEntry in circuits)
-                    {
-                        circuitInfos.Add(new CircuitInfo
-                        {
-                            Name = circuitEntry.Key,
-                            Inputs = circuitEntry.Value.InputNames,
-                            Outputs = circuitEntry.Value.OutputNames,
-                            FilePath = circuitEntry.Value.FilePath,
-                            DefinitionLine = circuitEntry.Value.DefinitionLine,
-                            Gates = circuitEntry.Value.NamedGates.Where(g=>!string.IsNullOrEmpty(g.Value.Type)).ToDictionary(g => g.Key, g => new GateInfo { Type = g.Value.Type, DefinitionLine = g.Value.DefinitionLine })
-                        });
-                    }
-                }
-                catch (Exception)
-                {
-                    // If parsing fails, return empty list
-                    circuitInfos = new List<CircuitInfo>();
-                }
-
-                Console.WriteLine(JsonSerializer.Serialize(circuitInfos, new JsonSerializerOptions { WriteIndented = false }));
-                return;
-            }
-
-            // Normal simulation mode
             Circuit circuit;
             try
             {
@@ -274,7 +275,7 @@ namespace CircuitSimulator
                 if (arg.StartsWith("--"))
                 {
                     // Skip known flags
-                    if (arg == "--verify" || arg.StartsWith("--base-path="))
+                    if (arg == "--verify" || arg.StartsWith("--base-path=") || arg.StartsWith("--synthesize=") || arg.StartsWith("--out="))
                     {
                         continue;
                     }
@@ -464,6 +465,83 @@ namespace CircuitSimulator
 
                 Console.WriteLine($"  {baseName}: {binaryStr}");
             }
+        }
+
+        static void Main(string[] args)
+        {
+            if (args.Length == 0)
+            {
+                Console.WriteLine("Usage: CircuitSimulator <dsl-file> [--<input>=<value>]... [--ticks=N] [--verify] [--info]");
+                Console.WriteLine("       CircuitSimulator --synthesize=\"expression\" [--out=<file>]");
+                Console.WriteLine("Examples:");
+                Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --ticks=10");
+                Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --b=false --ticks=5");
+                Console.WriteLine("  CircuitSimulator circuit.circuit --verify  # For LSP validation");
+                Console.WriteLine("  CircuitSimulator circuit.circuit --info    # For LSP hover info");
+                Console.WriteLine("  CircuitSimulator --synthesize=\"xor(and(a,b),or(a,c))\"  # Synthesize circuit from expression");
+                Console.WriteLine("  CircuitSimulator --synthesize=\"xor(and(a,b),or(a,c))\" --out=synth.circuit  # Save to file");
+                return;
+            }
+
+            var dslFile = args.Length > 0 && !args[0].StartsWith("--") ? args[0] : null;
+            var isVerifyMode = args.Contains("--verify");
+            var isInfoMode = args.Contains("--info");
+            var isSynthesizeMode = false;
+            string? synthesizeExpression = null;
+            string? outFile = null;
+            
+            // Parse arguments
+            string? customBasePath = null;
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i].StartsWith("--base-path="))
+                {
+                    customBasePath = args[i].Substring("--base-path=".Length);
+                }
+                else if (args[i].StartsWith("--synthesize="))
+                {
+                    isSynthesizeMode = true;
+                    synthesizeExpression = args[i].Substring("--synthesize=".Length);
+                }
+                else if (args[i].StartsWith("--out="))
+                {
+                    outFile = args[i].Substring("--out=".Length);
+                }
+            }
+            
+            if (isSynthesizeMode)
+            {
+                if (synthesizeExpression == null)
+                {
+                    Console.WriteLine("Synthesis expression is required.");
+                    return;
+                }
+                RunSynthesizeMode(synthesizeExpression, outFile);
+                return;
+            }
+
+            if (dslFile == null)
+            {
+                Console.WriteLine("DSL file is required for this mode.");
+                return;
+            }
+
+            var basePath = customBasePath ?? Path.GetDirectoryName(Path.GetFullPath(dslFile)) ?? ".";
+
+            if (isVerifyMode)
+            {
+                RunVerifyMode(dslFile, basePath);
+                return;
+            }
+
+            if (isInfoMode)
+            {
+                RunInfoMode(dslFile, basePath);
+                return;
+            }
+
+            // Normal simulation mode
+            RunSimulationMode(dslFile, basePath, args);
         }
     }
 }
