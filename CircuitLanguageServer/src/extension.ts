@@ -23,7 +23,7 @@ function loadBuiltinDocs(context: ExtensionContext) {
 				const gateName = path.basename(file, '.circuit');
 				const filePath = path.join(builtinDir, file);
 				const content = fs.readFileSync(filePath, 'utf8');
-				builtinDocs[`/${gateName}`] = content;
+				builtinDocs[`/${gateName}.circuit`.toLowerCase()] = content;
 			}
 		}
 	} catch (error) {
@@ -36,7 +36,7 @@ export function activate(context: ExtensionContext) {
 
 	const provider = {
 		provideTextDocumentContent(uri: vscode.Uri): string {
-			return builtinDocs[uri.path] || '// Unknown builtin';
+			return builtinDocs[uri.path.toLowerCase()] || '// Unknown builtin';
 		},
 	};
 

@@ -810,7 +810,7 @@ connection.onDefinition(
 					console.log(`Go to definition: ${word} is a built-in gate`);
 					// Built-in gates don't have definitions to go to
 					return {
-						uri: 'circuit-builtin:///' + word,
+						uri: 'circuit-builtin:///' + word +'.circuit',
 						range: {
 							start: { line: 0, character: 0 },
 							end: { line: 0, character: 0 }
@@ -998,7 +998,7 @@ function getBlockInfoAtPosition(document: TextDocument, offset: number): { block
 
 	// Check each circuit's blocks
 	for (const circuitInfo of circuitInfos) {
-		if (circuitInfo.Blocks) {
+		if (circuitInfo.FilePath === documentPath && circuitInfo.Blocks) {
 			for (const [blockName, blockInfo] of Object.entries(circuitInfo.Blocks)) {
 				// Convert 1-based lines to 0-based
 				const startLine = blockInfo.StartLine - 1;
