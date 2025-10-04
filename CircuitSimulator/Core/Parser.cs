@@ -176,6 +176,8 @@ namespace CircuitSimulator.Core
                 if (Match(TokenType.IDENTIFIER))
                 {
                     string name = Previous().Value;
+                    int defLine = Previous().Line;
+                    int defCol = Previous().Column;
 
                     if (Match(TokenType.LBRACKET))
                     {
@@ -188,12 +190,12 @@ namespace CircuitSimulator.Core
                             string indexedName = $"{name}[{i}]";
                             circuit.ExternalInputs[indexedName] = false;
                         }
-                        circuit.InputNames.Add(new PortInfo { Name = $"{name}[{size}]", BitWidth = size, DefinitionLine = Previous().Line, DefinitionColumn = Previous().Column });
+                        circuit.InputNames.Add(new PortInfo { Name = name, BitWidth = size, DefinitionLine = defLine, DefinitionColumn = defCol });
                     }
                     else
                     {
                         circuit.ExternalInputs[name] = false;
-                        circuit.InputNames.Add(new PortInfo { Name = name, BitWidth = 1, DefinitionLine = Previous().Line, DefinitionColumn = Previous().Column });
+                        circuit.InputNames.Add(new PortInfo { Name = name, BitWidth = 1, DefinitionLine = defLine, DefinitionColumn = defCol });
                     }
                 }
 
@@ -214,6 +216,8 @@ namespace CircuitSimulator.Core
             {
                 Consume(TokenType.IDENTIFIER, "Expected output name");
                 string name = Previous().Value;
+                int defLine = Previous().Line;
+                int defCol = Previous().Column;
 
                 if (Match(TokenType.LBRACKET))
                 {
@@ -226,12 +230,12 @@ namespace CircuitSimulator.Core
                         string indexedName = $"{name}[{i}]";
                         circuit.ExternalOutputs[indexedName] = null;
                     }
-                    circuit.OutputNames.Add(new PortInfo { Name = $"{name}[{size}]", BitWidth = size, DefinitionLine = Previous().Line, DefinitionColumn = Previous().Column });
+                    circuit.OutputNames.Add(new PortInfo { Name = name, BitWidth = size, DefinitionLine = defLine, DefinitionColumn = defCol });
                 }
                 else
                 {
                     circuit.ExternalOutputs[name] = null;
-                    circuit.OutputNames.Add(new PortInfo { Name = name, BitWidth = 1, DefinitionLine = Previous().Line, DefinitionColumn = Previous().Column });
+                    circuit.OutputNames.Add(new PortInfo { Name = name, BitWidth = 1, DefinitionLine = defLine, DefinitionColumn = defCol });
                 }
 
                 if (!Check(TokenType.RBRACE))
