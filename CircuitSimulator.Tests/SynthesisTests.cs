@@ -9,7 +9,7 @@ namespace CircuitSimulator.Tests
         [Fact]
         public void GenerateDSL_SimpleAndGate()
         {
-            var builder = new SynthesisBuilder();
+            var builder = new Synthesizer();
             string dsl = builder.GenerateDSL("TestCircuit", "and(a,b)");
             
             // Verify the DSL contains expected elements
@@ -28,7 +28,7 @@ namespace CircuitSimulator.Tests
         [Fact]
         public void GenerateDSL_XorWithAndOr()
         {
-            var builder = new SynthesisBuilder();
+            var builder = new Synthesizer();
             string dsl = builder.GenerateDSL("TestCircuit", "xor(and(a,b),or(a,c))");
             
             // Verify the DSL contains expected elements
@@ -53,7 +53,7 @@ namespace CircuitSimulator.Tests
         [Fact]
         public void GenerateDSL_NotGate()
         {
-            var builder = new SynthesisBuilder();
+            var builder = new Synthesizer();
             string dsl = builder.GenerateDSL("TestCircuit", "not(a)");
             
             // Verify the DSL contains expected elements
@@ -71,7 +71,7 @@ namespace CircuitSimulator.Tests
         [Fact]
         public void GenerateDSL_NandGate()
         {
-            var builder = new SynthesisBuilder();
+            var builder = new Synthesizer();
             string dsl = builder.GenerateDSL("TestCircuit", "nand(a,b)");
             
             // Verify the DSL contains expected elements
@@ -90,7 +90,7 @@ namespace CircuitSimulator.Tests
         [Fact]
         public void GenerateDSL_NorGate()
         {
-            var builder = new SynthesisBuilder();
+            var builder = new Synthesizer();
             string dsl = builder.GenerateDSL("TestCircuit", "nor(a,b)");
             
             // Verify the DSL contains expected elements
@@ -109,7 +109,7 @@ namespace CircuitSimulator.Tests
         [Fact]
         public void GenerateDSL_XnorGate()
         {
-            var builder = new SynthesisBuilder();
+            var builder = new Synthesizer();
             string dsl = builder.GenerateDSL("TestCircuit", "xnor(a,b)");
             
             // Verify the DSL contains expected elements
@@ -128,7 +128,7 @@ namespace CircuitSimulator.Tests
         [Fact]
         public void GenerateDSL_ComplexExpression()
         {
-            var builder = new SynthesisBuilder();
+            var builder = new Synthesizer();
             string dsl = builder.GenerateDSL("TestCircuit", "or(and(a,b),and(not(c),d))");
             
             // Verify the DSL contains expected elements
@@ -147,21 +147,21 @@ namespace CircuitSimulator.Tests
         [Fact]
         public void GenerateDSL_InvalidOperator_ThrowsException()
         {
-            var builder = new SynthesisBuilder();
+            var builder = new Synthesizer();
             Assert.Throws<Exception>(() => builder.GenerateDSL("TestCircuit", "invalid(a,b)"));
         }
 
         [Fact]
         public void GenerateDSL_EmptyExpression_ThrowsException()
         {
-            var builder = new SynthesisBuilder();
+            var builder = new Synthesizer();
             Assert.Throws<Exception>(() => builder.GenerateDSL("TestCircuit", ""));
         }
 
         [Fact]
         public void GenerateDSL_WrongArity_ThrowsException()
         {
-            var builder = new SynthesisBuilder();
+            var builder = new Synthesizer();
             Assert.Throws<Exception>(() => builder.GenerateDSL("TestCircuit", "and(a)"));
             Assert.Throws<Exception>(() => builder.GenerateDSL("TestCircuit", "not(a,b)"));
         }

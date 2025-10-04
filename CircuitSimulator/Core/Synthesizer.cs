@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace CircuitSimulator
+namespace CircuitSimulator.Core
 {
     public class Synthesizer
     {

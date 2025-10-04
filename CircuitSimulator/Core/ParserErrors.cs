@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 
-namespace CircuitSimulator
+namespace CircuitSimulator.Core
 {
     // Custom exception classes for DSL parsing errors
     public class DSLParseException : Exception
@@ -52,7 +52,7 @@ namespace CircuitSimulator
     {
         public DSLInvalidConnectionException(string connection, string reason)
             : base($"Invalid connection '{connection}': {reason}") { }
-        
+
         public DSLInvalidConnectionException(int line, int column, string connection, string reason)
             : base(line, column, $"Invalid connection '{connection}': {reason}") { }
     }

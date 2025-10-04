@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using CircuitSimulator.LSP;
 
-namespace CircuitSimulator
+namespace CircuitSimulator.Core
 {
     public class Parser
     {
@@ -45,13 +46,15 @@ namespace CircuitSimulator
         private int _current;
         private readonly string _basePath;
         private readonly string _filePath;
+        private readonly string _originalFilePath;
 
-        public Parser(List<Token> tokens, string basePath, string filePath)
+        public Parser(List<Token> tokens, string basePath, string filePath, string? originalFilePath = null)
         {
             _tokens = tokens;
             _current = 0;
             _basePath = basePath;
             _filePath = filePath;
+            _originalFilePath = originalFilePath ?? filePath;
         }
 
         public Dictionary<string, Circuit> ParseCircuits()
@@ -91,7 +94,7 @@ namespace CircuitSimulator
 
                 var lexer = new Lexer(importedDsl);
                 var tokens = lexer.Tokenize().ToList();
-                var parser = new Parser(tokens, _basePath, importPath);
+                var parser = new Parser(tokens, _basePath, importPath, importPath);
                 var importedCircuits = parser.ParseCircuits();
 
                 foreach (var kvp in importedCircuits)
@@ -110,9 +113,10 @@ namespace CircuitSimulator
             Consume(TokenType.IDENTIFIER, "Expected circuit name");
             string circuitName = Previous().Value;
 
-            var circuit = new Circuit { 
+            var circuit = new Circuit
+            {
                 Name = circuitName,
-                FilePath = _filePath,
+                FilePath = _originalFilePath,
                 DefinitionLine = definitionLine
             };
 
@@ -183,13 +187,13 @@ namespace CircuitSimulator
                         {
                             string indexedName = $"{name}[{i}]";
                             circuit.ExternalInputs[indexedName] = false;
-                            circuit.InputNames.Add(indexedName);
                         }
+                        circuit.InputNames.Add(new PortInfo { Name = $"{name}[{size}]", BitWidth = size, DefinitionLine = Previous().Line, DefinitionColumn = Previous().Column });
                     }
                     else
                     {
                         circuit.ExternalInputs[name] = false;
-                        circuit.InputNames.Add(name);
+                        circuit.InputNames.Add(new PortInfo { Name = name, BitWidth = 1, DefinitionLine = Previous().Line, DefinitionColumn = Previous().Column });
                     }
                 }
 
@@ -221,13 +225,13 @@ namespace CircuitSimulator
                     {
                         string indexedName = $"{name}[{i}]";
                         circuit.ExternalOutputs[indexedName] = null;
-                        circuit.OutputNames.Add(indexedName);
                     }
+                    circuit.OutputNames.Add(new PortInfo { Name = $"{name}[{size}]", BitWidth = size, DefinitionLine = Previous().Line, DefinitionColumn = Previous().Column });
                 }
                 else
                 {
                     circuit.ExternalOutputs[name] = null;
-                    circuit.OutputNames.Add(name);
+                    circuit.OutputNames.Add(new PortInfo { Name = name, BitWidth = 1, DefinitionLine = Previous().Line, DefinitionColumn = Previous().Column });
                 }
 
                 if (!Check(TokenType.RBRACE))
@@ -248,6 +252,7 @@ namespace CircuitSimulator
                 Consume(TokenType.IDENTIFIER, "Expected gate name");
                 string gateName = Previous().Value;
                 int definitionLine = Previous().Line;
+                int definitionColumn = Previous().Column;
 
                 Consume(TokenType.EQUALS, "Expected '=' after gate name");
 
@@ -292,6 +297,7 @@ namespace CircuitSimulator
                 }
 
                 gate.DefinitionLine = definitionLine;
+                gate.DefinitionColumn = definitionColumn;
                 circuit.AddGate(gateName, gate);
 
                 if (!Check(TokenType.RBRACE))

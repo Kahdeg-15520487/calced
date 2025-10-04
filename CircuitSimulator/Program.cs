@@ -1,40 +1,9 @@
 ﻿using System.Text.Json;
+using CircuitSimulator.Core;
+using CircuitSimulator.LSP;
 
 namespace CircuitSimulator
 {
-    public class DiagnosticInfo
-    {
-        public string Message { get; set; } = "";
-        public int Line { get; set; }
-        public int Column { get; set; }
-        public int Length { get; set; }
-        public string Severity { get; set; } = "error";
-    }
-
-    public class GateInfo
-    {
-        public string Type { get; set; } = "";
-        public int DefinitionLine { get; set; } = 0;
-    }
-
-    public class BlockInfo
-    {
-        public int StartLine { get; set; }
-        public int EndLine { get; set; }
-    }
-
-    public class CircuitInfo
-    {
-        public string Name { get; set; } = "";
-        public List<string> Inputs { get; set; } = new List<string>();
-        public List<string> Outputs { get; set; } = new List<string>();
-        public string FilePath { get; set; } = "";
-        public int DefinitionLine { get; set; } = 0;
-        public Dictionary<string, GateInfo> Gates { get; set; } = new Dictionary<string, GateInfo>();
-
-        public Dictionary<string, BlockInfo> Blocks { get; set; } = new Dictionary<string, BlockInfo>();
-    }
-
     class Program
     {
         static bool[] ParseMultiBitValue(string valueStr)
@@ -103,7 +72,7 @@ namespace CircuitSimulator
                 var dsl = File.ReadAllText(dslFile);
                 var lexer = new Lexer(dsl);
                 var tokens = lexer.Tokenize().ToList();
-                var parser = new Parser(tokens, basePath, dsl);
+                var parser = new Parser(tokens, basePath, dslFile);
                 var circuits = parser.ParseCircuits();
                 // If parsing succeeds, no diagnostics
             }
@@ -148,7 +117,7 @@ namespace CircuitSimulator
             Console.WriteLine(JsonSerializer.Serialize(diagnostics, new JsonSerializerOptions { WriteIndented = false }));
         }
 
-        static void RunInfoMode(string dslFile, string basePath)
+        static void RunInfoMode(string dslFile, string basePath, string? originalFilePath = null)
         {
             // LSP info mode - return JSON circuit definitions
             var circuitInfos = new List<CircuitInfo>();
@@ -158,7 +127,7 @@ namespace CircuitSimulator
                 var dsl = File.ReadAllText(dslFile);
                 var lexer = new Lexer(dsl);
                 var tokens = lexer.Tokenize().ToList();
-                var parser = new Parser(tokens, basePath, dsl);
+                var parser = new Parser(tokens, basePath, dslFile, originalFilePath);
                 var circuits = parser.ParseCircuits();
 
                 foreach (var circuitEntry in circuits)
@@ -170,7 +139,7 @@ namespace CircuitSimulator
                         Outputs = circuitEntry.Value.OutputNames,
                         FilePath = circuitEntry.Value.FilePath,
                         DefinitionLine = circuitEntry.Value.DefinitionLine,
-                        Gates = circuitEntry.Value.NamedGates.Where(g => !string.IsNullOrEmpty(g.Value.Type)).ToDictionary(g => g.Key, g => new GateInfo { Type = g.Value.Type, DefinitionLine = g.Value.DefinitionLine }),
+                        Gates = circuitEntry.Value.NamedGates.Where(g => !string.IsNullOrEmpty(g.Value.Type)).ToDictionary(g => g.Key, g => new GateInfo { Type = g.Value.Type, DefinitionLine = g.Value.DefinitionLine, DefinitionColumn = g.Value.DefinitionColumn }),
                         Blocks = circuitEntry.Value.Blocks
                     });
                 }
@@ -503,11 +472,16 @@ namespace CircuitSimulator
 
             // Parse arguments
             string? customBasePath = null;
+            string? originalFilePath = null;
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i].StartsWith("--base-path="))
                 {
                     customBasePath = args[i].Substring("--base-path=".Length);
+                }
+                else if (args[i].StartsWith("--original-file-path="))
+                {
+                    originalFilePath = args[i].Substring("--original-file-path=".Length);
                 }
                 else if (args[i].StartsWith("--synthesize="))
                 {
@@ -547,7 +521,7 @@ namespace CircuitSimulator
 
             if (isInfoMode)
             {
-                RunInfoMode(dslFile, basePath);
+                RunInfoMode(dslFile, basePath, originalFilePath);
                 return;
             }
 

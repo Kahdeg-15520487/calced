@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using CircuitSimulator.LSP;
 
-namespace CircuitSimulator
+namespace CircuitSimulator.Core
 {
     public class Circuit
     {
@@ -19,9 +20,9 @@ namespace CircuitSimulator
         private Dictionary<Gate, string> GateToName { get; } = new Dictionary<Gate, string>();
         // External inputs and outputs
         public Dictionary<string, bool> ExternalInputs { get; } = new Dictionary<string, bool>();
-        public List<string> InputNames { get; } = new List<string>();
+        public List<PortInfo> InputNames { get; } = new List<PortInfo>();
         public Dictionary<string, Gate?> ExternalOutputs { get; } = new Dictionary<string, Gate?>();
-        public List<string> OutputNames { get; } = new List<string>();
+        public List<PortInfo> OutputNames { get; } = new List<PortInfo>();
 
         // Block information for LSP
         public Dictionary<string, BlockInfo> Blocks { get; } = new Dictionary<string, BlockInfo>();

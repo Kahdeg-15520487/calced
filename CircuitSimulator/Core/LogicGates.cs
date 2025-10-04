@@ -1,10 +1,11 @@
-namespace CircuitSimulator
+namespace CircuitSimulator.Core
 {
     public abstract class Gate
     {
         public List<bool> Inputs { get; set; } = [];
         public List<bool> Outputs { get; protected set; } = [];
         public int DefinitionLine { get; set; } = 0;
+        public int DefinitionColumn { get; set; } = 0;
         public string Type { get; set; } = "";
 
         public bool Output => Outputs.Count > 0 && Outputs[0];
@@ -135,8 +136,8 @@ namespace CircuitSimulator
     {
         private Circuit SubCircuit { get; }
 
-        public List<string> InputNames => SubCircuit.InputNames;
-        public List<string> OutputNames => SubCircuit.OutputNames;
+        public List<string> InputNames => SubCircuit.InputNames.Select(p => p.Name).ToList();
+        public List<string> OutputNames => SubCircuit.OutputNames.Select(p => p.Name).ToList();
 
         public CircuitGate(Circuit subCircuit)
         {
@@ -212,7 +213,7 @@ namespace CircuitSimulator
         {
             // Convert inputs to binary string key
             string key = string.Join("", Inputs.Select(i => i ? "1" : "0"));
-            
+
             // Look up the output values
             if (LookupTable.TryGetValue(key, out bool[]? output))
             {

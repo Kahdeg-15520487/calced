@@ -3,20 +3,20 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace CircuitSimulator
+namespace CircuitSimulator.Core
 {
     // Token types for the DSL lexer
     public enum TokenType
     {
         // Keywords
         CIRCUIT, INPUTS, OUTPUTS, GATES, CONNECTIONS, LOOKUP_TABLES, IMPORT,
-        
+
         // Literals
         IDENTIFIER, STRING, NUMBER,
-        
+
         // Symbols
         LBRACE, RBRACE, LBRACKET, RBRACKET, LPAREN, RPAREN, ARROW, COMMA, EQUALS, DOT,
-        
+
         // Special
         EOF, COMMENT
     }
