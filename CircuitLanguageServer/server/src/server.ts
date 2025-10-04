@@ -829,13 +829,17 @@ connection.onHover(
 					// Show lookup table definition info
 					const tableInfo = currentCircuit?.LookupTables[word];
 					if (tableInfo) {
-						const truthTableEntries = Object.entries(tableInfo.TruthTable)
-							.map(([input, output]) => `  ${input} -> ${output}`)
-							.join('\n');
+						const entries = Object.entries(tableInfo);
+						const inputWidth = entries.length > 0 ? entries[0][0].length : 0;
+						const outputWidth = entries.length > 0 ? entries[0][1].length : 0;
+						const tableRows = entries.map(([input, output]) => `| ${input} | ${output.map((b: boolean) => b ? '1' : '0').join('')} |`).join('\n');
+						const header = '| Input | Output |';
+						const separator = '| ----- | ------ |';
+						const truthTableFormatted = `${header}\n${separator}\n${tableRows}`;
 						return {
 							contents: {
 								kind: MarkupKind.Markdown,
-								value: `**Lookup Table:** ${word}\n\n**Input Width:** ${tableInfo.InputWidth}\n\n**Output Width:** ${tableInfo.OutputWidth}\n\n**Truth Table:**\n\`\`\`\n${truthTableEntries}\n\`\`\``
+								value: `**Lookup Table:** ${word}\n\n**Input Width:** ${inputWidth}\n\n**Output Width:** ${outputWidth}\n\n**Truth Table:**\n\`\`\`\n${truthTableFormatted}\n\`\`\``
 							}
 						};
 					}

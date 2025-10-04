@@ -150,12 +150,16 @@ namespace CircuitSimulator.Core
                 }
                 else if (Match(TokenType.LOOKUP_TABLES))
                 {
+                    int startLine = Previous().Line;
+                    int startColumn = Previous().Column;
                     var luts = ParseLookupTables();
                     foreach (var (lutName, lutBlock, lutTable) in luts)
                     {
                         circuit.Blocks[lutName] = lutBlock;
                         circuit.LookupTables[lutName] = lutTable;
                     }
+                    int endLine = Previous().Line;
+                    circuit.Blocks["lookup_tables"] = new BlockInfo { StartLine = startLine, StartColumn = startColumn, EndLine = endLine };
                 }
                 else if (Match(TokenType.CONNECTIONS))
                 {
