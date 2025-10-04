@@ -14,7 +14,10 @@ import {
 	TextDocumentSyncKind,
 	InitializeResult,
 	MarkupKind,
-	MarkupContent
+	MarkupContent,
+	SemanticTokens,
+	SemanticTokensBuilder,
+	SemanticTokensLegend
 } from 'vscode-languageserver/node';
 
 import {
@@ -121,7 +124,15 @@ connection.onInitialize((params: InitializeParams) => {
 			// Enable hover support
 			hoverProvider: true,
 			// Enable definition support
-			definitionProvider: true
+			definitionProvider: true,
+			// Enable semantic tokens
+			semanticTokensProvider: {
+				legend: {
+					tokenTypes: ['circuitKeyword', 'circuitOperator', 'circuitFunction', 'comment', 'string', 'identifier'],
+					tokenModifiers: []
+				},
+				full: true
+			}
 		}
 	};
 	if (hasWorkspaceFolderCapability) {
@@ -522,6 +533,88 @@ function getCircuitInfo(content: string, basePath: string, originalFilePath?: st
 	}
 }
 
+// Semantic tokens support for syntax highlighting
+connection.languages.semanticTokens.on((params) => {
+	const document = documents.get(params.textDocument.uri);
+	if (!document) return { data: [] };
+
+	const text = document.getText();
+	const builder = new SemanticTokensBuilder();
+
+	// Define token type indices based on the legend
+	const TOKEN_TYPES = {
+		circuitKeyword: 0,
+		circuitOperator: 1,
+		circuitFunction: 2,
+		comment: 3,
+		string: 4,
+		identifier: 5
+	};
+
+	// Known tokens that are not identifiers
+	const knownTokens = new Set([
+		'circuit', 'import', 'inputs', 'outputs', 'lookup_tables', 'gates', 'connections',
+		'AND', 'OR', 'NOT', 'NAND', 'NOR', 'XOR', 'XNOR', 'DFF', 'Circuit', 'LookupTable'
+	]);
+
+	const lines = text.split('\n');
+	let lineIndex = 0;
+
+	for (const line of lines) {
+		// Comments (parse first to avoid conflicts)
+		const commentRegex = /\/\/.*$/g;
+		let match;
+		while ((match = commentRegex.exec(line)) !== null) {
+			builder.push(lineIndex, match.index, match[0].length, TOKEN_TYPES.comment, 0);
+		}
+
+		// Strings (parse before keywords/operators to avoid highlighting inside strings)
+		const stringRegex = /"[^"]*"/g;
+		while ((match = stringRegex.exec(line)) !== null) {
+			builder.push(lineIndex, match.index, match[0].length, TOKEN_TYPES.string, 0);
+		}
+
+		// Keywords
+		const keywordRegex = /\b(circuit|import|inputs|outputs|lookup_tables|gates|connections)\b/g;
+		while ((match = keywordRegex.exec(line)) !== null) {
+			builder.push(lineIndex, match.index, match[0].length, TOKEN_TYPES.circuitKeyword, 0);
+		}
+
+		// Operators (handle -> first as it's multi-character)
+		const operatorPatterns = [
+			{ regex: /->/g, type: TOKEN_TYPES.circuitOperator },
+			{ regex: /[=\.(){}[\]]/g, type: TOKEN_TYPES.circuitOperator }
+		];
+
+		for (const pattern of operatorPatterns) {
+			pattern.regex.lastIndex = 0; // Reset regex state
+			while ((match = pattern.regex.exec(line)) !== null) {
+				builder.push(lineIndex, match.index, match[0].length, pattern.type, 0);
+			}
+		}
+
+		// Functions: gate names and built-in functions followed by (
+		const functionRegex = /\b(AND|OR|NOT|NAND|NOR|XOR|XNOR|DFF|Circuit|LookupTable)\b(?=\s*\()/g;
+		while ((match = functionRegex.exec(line)) !== null) {
+			builder.push(lineIndex, match.index, match[0].length, TOKEN_TYPES.circuitFunction, 0);
+		}
+
+		// Identifiers: words that are not known tokens
+		const identifierRegex = /\b[a-zA-Z_][a-zA-Z0-9_]*\b/g;
+		while ((match = identifierRegex.exec(line)) !== null) {
+			const word = match[0];
+			if (!knownTokens.has(word)) {
+				console.log(`Identifier found: ${word} at line ${lineIndex}, char ${match.index}`);
+				builder.push(lineIndex, match.index, match[0].length, TOKEN_TYPES.identifier, 0);
+			}
+		}
+
+		lineIndex++;
+	}
+
+	return builder.build();
+});
+
 // Hover support for showing information about symbols
 connection.onHover(
 	(textDocumentPosition: TextDocumentPositionParams) => {
@@ -551,7 +644,6 @@ connection.onHover(
 
 		// Check in cached circuit's blocks first
 		const blockInfo = getBlockInfoAtPosition(document, wordRange.start);
-		console.log(`Hover requested for word: ${word} in block: ${blockInfo?.blockName}`);
 
 		switch (blockInfo?.blockName) {
 			case 'connections':
@@ -746,12 +838,9 @@ connection.onHover(
 							if (refTableInfo) {
 								const entries = Object.entries(refTableInfo.TruthTable);
 								const tableRows = entries.map(([input, output]) => `| ${input} | ${output} |`).join('\n');
-								const header = '| Input | Output |';
-								const separator = '| ----- | ------ |';
-								const truthTableFormatted = `${header}\n${separator}\n${tableRows}`;
 								const content: MarkupContent = {
 									kind: MarkupKind.Markdown,
-									value: `**Lookup Table:** ${word}\n\n**Input Width:** ${refTableInfo.InputWidth}\n\n**Output Width:** ${refTableInfo.OutputWidth}\n\n**Truth Table:**\n\`\`\`\n${truthTableFormatted}\n\`\`\``
+									value: `**Lookup Table:** ${word}\n\n**Input Width:** ${refTableInfo.InputWidth}\n\n**Output Width:** ${refTableInfo.OutputWidth}\n\n**Truth Table:**\n\`\`\`\n${tableRows}\n\`\`\``
 								};
 								return {
 									contents: content
@@ -829,17 +918,12 @@ connection.onHover(
 					// Show lookup table definition info
 					const tableInfo = currentCircuit?.LookupTables[word];
 					if (tableInfo) {
-						const entries = Object.entries(tableInfo);
-						const inputWidth = entries.length > 0 ? entries[0][0].length : 0;
-						const outputWidth = entries.length > 0 ? entries[0][1].length : 0;
-						const tableRows = entries.map(([input, output]) => `| ${input} | ${output.map((b: boolean) => b ? '1' : '0').join('')} |`).join('\n');
-						const header = '| Input | Output |';
-						const separator = '| ----- | ------ |';
-						const truthTableFormatted = `${header}\n${separator}\n${tableRows}`;
+						const entries = Object.entries(tableInfo.TruthTable);
+						const tableRows = entries.map(([input, output]) => `| ${input} | ${output} |`).join('\n');
 						return {
 							contents: {
 								kind: MarkupKind.Markdown,
-								value: `**Lookup Table:** ${word}\n\n**Input Width:** ${inputWidth}\n\n**Output Width:** ${outputWidth}\n\n**Truth Table:**\n\`\`\`\n${truthTableFormatted}\n\`\`\``
+								value: `**Lookup Table:** ${word}\n\n**Input Width:** ${tableInfo.InputWidth}\n\n**Output Width:** ${tableInfo.OutputWidth}\n\n**Truth Table:**\n\`\`\`\n${tableRows}\n\`\`\``
 							}
 						};
 					}

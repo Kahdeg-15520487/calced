@@ -1,8 +1,12 @@
-import "full_adder.circuit"
+import "full_adder"
 
 circuit FourBitAdder {
     inputs { a[4], b[4], k }
     outputs { sum[4], cout }
+    lookup_tables {
+        // k = 0: sum = a + b
+        // k = 1: sum = a - b
+    }
     gates {
         fa1 = Circuit("FullAdder")
         fa2 = Circuit("FullAdder")

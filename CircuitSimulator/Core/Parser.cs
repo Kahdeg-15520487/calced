@@ -85,7 +85,7 @@ namespace CircuitSimulator.Core
         private void ParseImport(Dictionary<string, Circuit> circuits)
         {
             Consume(TokenType.STRING, "Expected string after 'import'");
-            string filename = Previous().Value;
+            string filename = Previous().Value+".circuit";
 
             try
             {
