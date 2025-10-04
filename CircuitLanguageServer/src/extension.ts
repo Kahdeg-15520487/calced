@@ -1,5 +1,7 @@
 import * as path from 'path';
+import * as vscode from 'vscode';
 import { workspace, ExtensionContext } from 'vscode';
+import * as fs from 'fs';
 
 import {
 	LanguageClient,
@@ -10,7 +12,38 @@ import {
 
 let client: LanguageClient;
 
+const builtinDocs: Record<string, string> = {};
+
+function loadBuiltinDocs(context: ExtensionContext) {
+	const builtinDir = path.join(context.extensionPath, 'builtin');
+	try {
+		const files = fs.readdirSync(builtinDir);
+		for (const file of files) {
+			if (file.endsWith('.circuit')) {
+				const gateName = path.basename(file, '.circuit');
+				const filePath = path.join(builtinDir, file);
+				const content = fs.readFileSync(filePath, 'utf8');
+				builtinDocs[`/${gateName}`] = content;
+			}
+		}
+	} catch (error) {
+		console.error('Failed to load builtin docs:', error);
+	}
+}
+
 export function activate(context: ExtensionContext) {
+	loadBuiltinDocs(context);
+
+	const provider = {
+		provideTextDocumentContent(uri: vscode.Uri): string {
+			return builtinDocs[uri.path] || '// Unknown builtin';
+		},
+	};
+
+	context.subscriptions.push(
+		vscode.workspace.registerTextDocumentContentProvider('circuit-builtin', provider)
+	);
+
 	// The server is implemented in node
 	const serverModule = context.asAbsolutePath(
 		path.join('out', 'server', 'server.js')

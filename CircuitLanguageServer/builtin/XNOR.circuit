@@ -1,0 +1,23 @@
+circuit XNOR {
+    inputs { a, b }
+    outputs { y }
+
+    lookup_tables {
+        xnor_table = {
+            00 -> 1
+            01 -> 0
+            10 -> 0
+            11 -> 1
+        }
+    }
+
+    gates {
+        lut = LookupTable("xnor_table")
+    }
+
+    connections {
+        a -> lut.in[0]
+        b -> lut.in[1]
+        lut.out -> y
+    }
+}

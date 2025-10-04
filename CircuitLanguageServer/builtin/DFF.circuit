@@ -1,0 +1,27 @@
+circuit DFF {
+    inputs { d, clk }
+    outputs { q }
+
+    // D Flip-Flop: captures data on rising clock edge
+    // This simplified model shows the basic behavior
+    // In a real implementation, this would require sequential logic
+
+    lookup_tables {
+        dff_table = {
+            00 -> 0  // clk=0, d=0 -> q unchanged (assume 0)
+            01 -> 0  // clk=0, d=1 -> q unchanged (assume 0)
+            10 -> 0  // clk=1, d=0 -> q = 0
+            11 -> 1  // clk=1, d=1 -> q = 1
+        }
+    }
+
+    gates {
+        lut = LookupTable("dff_table")
+    }
+
+    connections {
+        clk -> lut.in[0]
+        d -> lut.in[1]
+        lut.out -> q
+    }
+}

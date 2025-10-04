@@ -1,0 +1,23 @@
+circuit NAND {
+    inputs { a, b }
+    outputs { y }
+
+    lookup_tables {
+        nand_table = {
+            00 -> 1
+            01 -> 1
+            10 -> 1
+            11 -> 0
+        }
+    }
+
+    gates {
+        lut = LookupTable("nand_table")
+    }
+
+    connections {
+        a -> lut.in[0]
+        b -> lut.in[1]
+        lut.out -> y
+    }
+}

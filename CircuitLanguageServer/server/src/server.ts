@@ -687,7 +687,7 @@ connection.onDefinition(
 			case 'connections':
 				// Handle connections block - parse connection reference and go to definition
 				const connectionRef = parseConnectionReference(word, text, offset);
-				
+
 				if (connectionRef) {
 					console.log(`Connection ref type: ${connectionRef.target}, gate: ${connectionRef.gateName}, port: ${connectionRef.portName}, direction: ${connectionRef.direction}`);
 
@@ -805,7 +805,64 @@ connection.onDefinition(
 
 				break;
 			case 'gates':
-				const gateDeclaration = parseGateDeclaration(word);
+				// Check if word is a builtin gate
+				if (gateInfo[word]) {
+					console.log(`Go to definition: ${word} is a built-in gate`);
+					// Built-in gates don't have definitions to go to
+					return {
+						uri: 'circuit-builtin:///' + word,
+						range: {
+							start: { line: 0, character: 0 },
+							end: { line: 0, character: 0 }
+						}
+					};
+				}
+
+				// Check if word is a circuit name referenced in gates
+				if (circuitInfos) {
+					for (const circuitInfo of circuitInfos) {
+						for (const gateName in circuitInfo.Gates) {
+							const gateType = circuitInfo.Gates[gateName].Type;
+							if (gateType === `Circuit:${word}`) {
+								// Go to the circuit definition
+								const targetCircuit = circuitInfos.find(c => c.Name === word);
+								if (targetCircuit) {
+									const defLine = targetCircuit.DefinitionLine - 1;
+									const defCol = 0; // Circuit definitions don't have column info
+									return {
+										uri: url.pathToFileURL(targetCircuit.FilePath).href,
+										range: {
+											start: { line: defLine, character: defCol },
+											end: { line: defLine, character: defCol + word.length }
+										}
+									};
+								}
+							}
+						}
+					}
+				}
+
+				// Check if word is a lookup table name referenced in gates
+				if (circuitInfos) {
+					for (const circuitInfo of circuitInfos) {
+						for (const gateName in circuitInfo.Gates) {
+							const gateType = circuitInfo.Gates[gateName].Type;
+							if (gateType === `LookupTable:${word}`) {
+								// Go find the lookup_tables block in current circuit
+								const blockInfo = currentCircuit?.Blocks[word];
+								if (blockInfo) {
+									return {
+										uri: textDocumentPosition.textDocument.uri,
+										range: {
+											start: { line: blockInfo.StartLine - 1, character: blockInfo.StartColumn - 1 },
+											end: { line: blockInfo.StartLine - 1, character: blockInfo.StartColumn - 1 + word.length }
+										}
+									};
+								}
+							}
+						}
+					}
+				}
 				break;
 			default:
 				// Handle default case

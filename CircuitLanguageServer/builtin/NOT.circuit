@@ -1,0 +1,20 @@
+circuit NOT {
+    inputs { a }
+    outputs { y }
+
+    lookup_tables {
+        not_table = {
+            0 -> 1
+            1 -> 0
+        }
+    }
+
+    gates {
+        lut = LookupTable("not_table")
+    }
+
+    connections {
+        a -> lut.in[0]
+        lut.out -> y
+    }
+}

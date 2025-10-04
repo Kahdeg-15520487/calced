@@ -150,11 +150,11 @@ namespace CircuitSimulator.Core
                 }
                 else if (Match(TokenType.LOOKUP_TABLES))
                 {
-                    int startLine = Previous().Line;
-                    int startColumn = Previous().Column;
-                    ParseLookupTables();
-                    int endLine = Previous().Line;
-                    circuit.Blocks["lookup_tables"] = new BlockInfo { StartLine = startLine, StartColumn = startColumn, EndLine = endLine };
+                    var lutBlocks = ParseLookupTables();
+                    foreach (var (lutName, lutBlock) in lutBlocks)
+                    {
+                        circuit.Blocks[lutName] = lutBlock;
+                    }
                 }
                 else if (Match(TokenType.CONNECTIONS))
                 {
@@ -321,14 +321,18 @@ namespace CircuitSimulator.Core
             Consume(TokenType.RBRACE, "Expected '}' after gates");
         }
 
-        private void ParseLookupTables()
+        private List<(string lutName, BlockInfo lutBlock)> ParseLookupTables()
         {
             Consume(TokenType.LBRACE, "Expected '{' after 'lookup_tables'");
+
+            var blocks = new List<(string lutName, BlockInfo lutBlock)>();
 
             while (!Check(TokenType.RBRACE) && !IsAtEnd())
             {
                 Consume(TokenType.IDENTIFIER, "Expected table name");
                 string tableName = Previous().Value;
+                int defLine = Previous().Line;
+                int defCol = Previous().Column;
 
                 Consume(TokenType.EQUALS, "Expected '=' after table name");
                 Consume(TokenType.LBRACE, "Expected '{' after '='");
@@ -368,6 +372,7 @@ namespace CircuitSimulator.Core
                 LookupTables[tableName] = table;
 
                 Consume(TokenType.RBRACE, "Expected '}' after table entries");
+                blocks.Add((tableName, new BlockInfo { StartLine = defLine, StartColumn = defCol, EndLine = Previous().Line }));
 
                 if (!Check(TokenType.RBRACE))
                 {
@@ -377,6 +382,8 @@ namespace CircuitSimulator.Core
             }
 
             Consume(TokenType.RBRACE, "Expected '}' after lookup_tables");
+
+            return blocks;
         }
 
         private void ParseConnections(Circuit circuit)

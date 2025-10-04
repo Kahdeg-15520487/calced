@@ -1,0 +1,23 @@
+circuit XOR {
+    inputs { a, b }
+    outputs { y }
+
+    lookup_tables {
+        xor_table = {
+            00 -> 0
+            01 -> 1
+            10 -> 1
+            11 -> 0
+        }
+    }
+
+    gates {
+        lut = LookupTable("xor_table")
+    }
+
+    connections {
+        a -> lut.in[0]
+        b -> lut.in[1]
+        lut.out -> y
+    }
+}

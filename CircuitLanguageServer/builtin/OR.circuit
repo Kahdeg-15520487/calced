@@ -1,0 +1,23 @@
+circuit OR {
+    inputs { a, b }
+    outputs { y }
+
+    lookup_tables {
+        or_table = {
+            00 -> 0
+            01 -> 1
+            10 -> 1
+            11 -> 1
+        }
+    }
+
+    gates {
+        lut = LookupTable("or_table")
+    }
+
+    connections {
+        a -> lut.in[0]
+        b -> lut.in[1]
+        lut.out -> y
+    }
+}
