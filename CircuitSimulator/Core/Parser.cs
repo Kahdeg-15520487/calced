@@ -127,23 +127,26 @@ namespace CircuitSimulator.Core
                 if (Match(TokenType.INPUTS))
                 {
                     int startLine = Previous().Line;
+                    int startColumn = Previous().Column;
                     ParseInputs(circuit);
                     int endLine = Previous().Line;
-                    circuit.Blocks["inputs"] = new BlockInfo { StartLine = startLine, EndLine = endLine };
+                    circuit.Blocks["inputs"] = new BlockInfo { StartLine = startLine, StartColumn = startColumn, EndLine = endLine };
                 }
                 else if (Match(TokenType.OUTPUTS))
                 {
                     int startLine = Previous().Line;
+                    int startColumn = Previous().Column;
                     ParseOutputs(circuit);
                     int endLine = Previous().Line;
-                    circuit.Blocks["outputs"] = new BlockInfo { StartLine = startLine, EndLine = endLine };
+                    circuit.Blocks["outputs"] = new BlockInfo { StartLine = startLine, StartColumn = startColumn, EndLine = endLine };
                 }
                 else if (Match(TokenType.GATES))
                 {
                     int startLine = Previous().Line;
+                    int startColumn = Previous().Column;
                     ParseGates(circuit, circuits);
                     int endLine = Previous().Line;
-                    circuit.Blocks["gates"] = new BlockInfo { StartLine = startLine, EndLine = endLine };
+                    circuit.Blocks["gates"] = new BlockInfo { StartLine = startLine, StartColumn = startColumn, EndLine = endLine };
                 }
                 else if (Match(TokenType.LOOKUP_TABLES))
                 {
