@@ -684,58 +684,6 @@ connection.onDefinition(
 		}
 
 		switch (blockInfo?.blockName) {
-			case 'inputs':
-				// Handle input block - go to first connection where this input is used
-				if (circuitInfos) {
-					for (const circuitInfo of circuitInfos) {
-						if (circuitInfo.Inputs.some(p => p.Name === word)) {
-							const lines = text.split('\n');
-							const connectionsBlock = circuitInfo.Blocks?.['connections'];
-							if (connectionsBlock) {
-								for (let i = connectionsBlock.StartLine - 1; i <= connectionsBlock.EndLine - 1; i++) {
-									if (lines[i].includes(word + ' ->')) {
-										const charIndex = lines[i].indexOf(word);
-										return {
-											uri: textDocumentPosition.textDocument.uri,
-											range: {
-												start: { line: i, character: charIndex },
-												end: { line: i, character: charIndex + word.length }
-											}
-										};
-									}
-								}
-							}
-							break; // Found the circuit with this input
-						}
-					}
-				}
-				break;
-			case 'outputs':
-				// Handle output block - go to first connection where this output is used
-				if (circuitInfos) {
-					for (const circuitInfo of circuitInfos) {
-						if (circuitInfo.Outputs.some(p => p.Name === word)) {
-							const lines = text.split('\n');
-							const connectionsBlock = circuitInfo.Blocks?.['connections'];
-							if (connectionsBlock) {
-								for (let i = connectionsBlock.StartLine - 1; i <= connectionsBlock.EndLine - 1; i++) {
-									if (lines[i].includes('-> ' + word)) {
-										const charIndex = lines[i].indexOf(word);
-										return {
-											uri: textDocumentPosition.textDocument.uri,
-											range: {
-												start: { line: i, character: charIndex },
-												end: { line: i, character: charIndex + word.length }
-											}
-										};
-									}
-								}
-							}
-							break; // Found the circuit with this output
-						}
-					}
-				}
-				break;
 			case 'connections':
 				// Handle connections block - parse connection reference and go to definition
 				const connectionRef = parseConnectionReference(word, text, offset);
@@ -823,7 +771,7 @@ connection.onDefinition(
 										if (blockInfo) {
 											// Go to the start of the inputs/outputs block
 											const defLine = blockInfo.StartLine - 1;
-											const defCol = 0;
+											const defCol = blockInfo.StartColumn - 1;
 											return {
 												uri: url.pathToFileURL(refCircuitInfo.FilePath).href,
 												range: {
@@ -857,23 +805,7 @@ connection.onDefinition(
 
 				break;
 			case 'gates':
-				// Handle gates block - go to gate definition
-				if (circuitInfos) {
-					for (const circuitInfo of circuitInfos) {
-						if (circuitInfo.Gates && circuitInfo.Gates[word]) {
-							const gateInfo = circuitInfo.Gates[word];
-							const definitionLine = gateInfo.DefinitionLine - 1;
-							const definitionColumn = gateInfo.DefinitionColumn - 1;
-							return {
-								uri: textDocumentPosition.textDocument.uri,
-								range: {
-									start: { line: definitionLine, character: definitionColumn },
-									end: { line: definitionLine, character: definitionColumn + word.length }
-								}
-							};
-						}
-					}
-				}
+				const gateDeclaration = parseGateDeclaration(word);
 				break;
 			default:
 				// Handle default case
@@ -897,32 +829,6 @@ function getWordRangeAtPosition(text: string, offset: number): { start: number; 
 		}
 	}
 
-	return null;
-}
-
-// Helper function to parse gate declaration line and find gate name position
-function parseGateDeclaration(line: string, gateName: string): { start: number; end: number } | null {
-	// Look for pattern: gateName = ...
-	const gatePattern = new RegExp(`^(\\s*)${gateName}\\s*=`, 'm');
-	const match = gatePattern.exec(line);
-	if (match) {
-		const startPos = match[1].length; // Length of leading whitespace
-		const endPos = startPos + gateName.length;
-		return { start: startPos, end: endPos };
-	}
-	return null;
-}
-
-// Helper function to parse circuit declaration line and find circuit name position
-function parseCircuitDeclaration(line: string, circuitName: string): { start: number; end: number } | null {
-	// Look for pattern: circuit CircuitName {
-	const circuitPattern = /^(\s*)circuit\s+(\w+)\s*\{/;
-	const match = circuitPattern.exec(line);
-	if (match && match[2] === circuitName) {
-		const startPos = match[1].length + 'circuit '.length; // After "circuit "
-		const endPos = startPos + circuitName.length;
-		return { start: startPos, end: endPos };
-	}
 	return null;
 }
 

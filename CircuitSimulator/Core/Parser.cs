@@ -150,7 +150,11 @@ namespace CircuitSimulator.Core
                 }
                 else if (Match(TokenType.LOOKUP_TABLES))
                 {
+                    int startLine = Previous().Line;
+                    int startColumn = Previous().Column;
                     ParseLookupTables();
+                    int endLine = Previous().Line;
+                    circuit.Blocks["lookup_tables"] = new BlockInfo { StartLine = startLine, StartColumn = startColumn, EndLine = endLine };
                 }
                 else if (Match(TokenType.CONNECTIONS))
                 {
