@@ -150,10 +150,11 @@ namespace CircuitSimulator.Core
                 }
                 else if (Match(TokenType.LOOKUP_TABLES))
                 {
-                    var lutBlocks = ParseLookupTables();
-                    foreach (var (lutName, lutBlock) in lutBlocks)
+                    var luts = ParseLookupTables();
+                    foreach (var (lutName, lutBlock, lutTable) in luts)
                     {
                         circuit.Blocks[lutName] = lutBlock;
+                        circuit.LookupTables[lutName] = lutTable;
                     }
                 }
                 else if (Match(TokenType.CONNECTIONS))
@@ -321,11 +322,11 @@ namespace CircuitSimulator.Core
             Consume(TokenType.RBRACE, "Expected '}' after gates");
         }
 
-        private List<(string lutName, BlockInfo lutBlock)> ParseLookupTables()
+        private List<(string lutName, BlockInfo lutBlock, Dictionary<string, bool[]> lutTable)> ParseLookupTables()
         {
             Consume(TokenType.LBRACE, "Expected '{' after 'lookup_tables'");
 
-            var blocks = new List<(string lutName, BlockInfo lutBlock)>();
+            var blocks = new List<(string lutName, BlockInfo lutBlock, Dictionary<string, bool[]> lutTable)>();
 
             while (!Check(TokenType.RBRACE) && !IsAtEnd())
             {
@@ -372,7 +373,7 @@ namespace CircuitSimulator.Core
                 LookupTables[tableName] = table;
 
                 Consume(TokenType.RBRACE, "Expected '}' after table entries");
-                blocks.Add((tableName, new BlockInfo { StartLine = defLine, StartColumn = defCol, EndLine = Previous().Line }));
+                blocks.Add((tableName, new BlockInfo { StartLine = defLine, StartColumn = defCol, EndLine = Previous().Line }, table));
 
                 if (!Check(TokenType.RBRACE))
                 {

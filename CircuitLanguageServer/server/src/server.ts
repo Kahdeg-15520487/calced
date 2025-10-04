@@ -1,4 +1,4 @@
-import { gateInfo } from './gateInfo';
+import { GateInfo } from './gateInfo';
 
 import {
 	createConnection,
@@ -12,7 +12,9 @@ import {
 	CompletionItemKind,
 	TextDocumentPositionParams,
 	TextDocumentSyncKind,
-	InitializeResult
+	InitializeResult,
+	MarkupKind,
+	MarkupContent
 } from 'vscode-languageserver/node';
 
 import {
@@ -45,6 +47,15 @@ interface BlockInfo {
 	EndLine: number;
 }
 
+interface LookupTableInfo {
+	Name: string;
+	DefinitionLine: number;
+	DefinitionColumn: number;
+	InputWidth: number;
+	OutputWidth: number;
+	TruthTable: { [input: string]: string };
+}
+
 interface CircuitInfo {
 	Name: string;
 	Inputs: PortInfo[];
@@ -52,6 +63,7 @@ interface CircuitInfo {
 	FilePath: string;
 	DefinitionLine: number;
 	Gates: { [name: string]: GateInfo };
+	LookupTables: { [name: string]: LookupTableInfo };
 	Blocks: { [name: string]: BlockInfo };
 }
 
@@ -201,7 +213,8 @@ documents.onDidChangeContent((change: any) => {
 });
 
 async function validateTextDocument(textDocument: TextDocument): Promise<void> {
-	connection.console.log(`Circuit Language Server: Validating document ${textDocument.uri}`);
+	const documentPath = url.fileURLToPath(textDocument.uri);
+	connection.console.log(`Circuit Language Server: Validating document ${documentPath}`);
 
 	// Save the document to a temporary file for CircuitSimulator to parse
 	const tempDir = path.join(__dirname, '..', '..', 'temp');
@@ -219,7 +232,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 		const simulatorPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.exe');
 
 		// Get the directory of the original document for import resolution
-		const documentDir = path.dirname(url.fileURLToPath(textDocument.uri));
+		const documentDir = path.dirname(documentPath);
 
 		await new Promise<void>((resolve, reject) => {
 			execFile(simulatorPath, [tempFile, '--verify', `--base-path=${documentDir}`], (error, stdout, stderr) => {
@@ -530,122 +543,327 @@ connection.onHover(
 		const word = text.substring(wordRange.start, wordRange.end);
 
 		// Provide hover information for different symbols
-		const info = gateInfo[word];
-		if (info) {
-			return {
-				contents: {
-					kind: 'markdown',
-					value: info
-				}
-			};
-		}
-
-		// Check if hovering over a circuit name in Circuit() calls
-		// First check if it's already in our cached definitions
-		let circuitInfoDup = circuitDefinitions.get(word);
-		if (circuitInfoDup) {
-			const inputsStr = circuitInfoDup!.Inputs.map((p: PortInfo) => p.Name).join(', ');
-			const outputsStr = circuitInfoDup!.Outputs.map((p: PortInfo) => p.Name).join(', ');
-			const hoverText = `**Circuit: ${circuitInfoDup!.Name}**\n\n` +
-				`**Inputs:** ${inputsStr || 'none'}\n\n` +
-				`**Outputs:** ${outputsStr || 'none'}\n\n` +
-				`*Defined in: ${path.basename(circuitInfoDup!.filePath)}*`;
-			return {
-				contents: {
-					kind: 'markdown',
-					value: hoverText
-				}
-			};
-		}
-
-		// If not found, try to get circuit info by calling C# program
+		// Get circuit info for the current document
 		const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
 		const documentDir = path.dirname(documentPath);
-		const circuitInfosHover = getCircuitInfo(text, documentDir, documentPath);
-		if (circuitInfosHover) {
-			const foundCircuit = circuitInfosHover.find((info) => info.Name === word);
-			if (foundCircuit) {
-				const inputsStr = foundCircuit.Inputs.join(', ');
-				const outputsStr = foundCircuit.Outputs.join(', ');
-				const hoverText = `**Circuit: ${foundCircuit.Name}**\n\n` +
-					`**Inputs:** ${inputsStr || 'none'}\n\n` +
-					`**Outputs:** ${outputsStr || 'none'}\n\n` +
-					`*Defined in: ${path.basename(foundCircuit.FilePath)}*`;
+		const circuitInfos = getCircuitInfo(text, documentDir, documentPath);
+		const currentCircuit = circuitInfos?.find(c => c.FilePath === documentPath);
 
-				// Cache the result
-				circuitDefinitions.set(word, {
-					name: foundCircuit.Name,
-					inputs: foundCircuit.Inputs,
-					outputs: foundCircuit.Outputs,
-					filePath: foundCircuit.FilePath,
-					definitionLine: foundCircuit.DefinitionLine,
-					gates: foundCircuit.Gates
-				});
-				return {
-					contents: {
-						kind: 'markdown',
-						value: hoverText
+		// Check in cached circuit's blocks first
+		const blockInfo = getBlockInfoAtPosition(document, wordRange.start);
+		console.log(`Hover requested for word: ${word} in block: ${blockInfo?.blockName}`);
+
+		switch (blockInfo?.blockName) {
+			case 'connections':
+				if (word === 'connections') {
+					return {
+						contents: {
+							kind: MarkupKind.Markdown,
+							value: GateInfo['connections']
+						}
+					};
+				}
+				// Handle connections block - parse connection reference and show info
+				const connectionRef = parseConnectionReference(word, text, offset);
+				if (connectionRef) {
+					switch (connectionRef.target) {
+						case 'gate':
+							// Show gate info
+							// Check current circuit first
+							const currentGate = currentCircuit?.Gates[word];
+							if (currentGate) {
+								return {
+									contents: {
+										kind: MarkupKind.Markdown,
+										value: `**Gate:** ${word}\n\nType: ${currentGate.Type}`
+									}
+								};
+							}
+							// Check other circuits
+							if (circuitInfos) {
+								for (const circuitInfo of circuitInfos) {
+									if (circuitInfo.Gates && circuitInfo.Gates[word]) {
+										const gateInfo = circuitInfo.Gates[word];
+										return {
+											contents: {
+												kind: MarkupKind.Markdown,
+												value: `**Gate:** ${circuitInfo.Name}.${word}\n\nType: ${gateInfo.Type}`
+											}
+										};
+									}
+								}
+							}
+							break;
+						case 'port':
+							{
+								// Check if port is current circuit's ports
+								const portName = connectionRef.portName!;
+								const portInfo = currentCircuit?.Inputs.find(p => p.Name === portName) || currentCircuit?.Outputs.find(p => p.Name === portName);
+								if (portInfo) {
+									return {
+										contents: {
+											kind: MarkupKind.Markdown,
+											value: `**Port:** ${portInfo.Name}\n\nBit Width: ${portInfo.BitWidth}`
+										}
+									};
+								}
+								// Check if the gate is builtin or a subcircuit
+								const gateInfo = currentCircuit?.Gates[connectionRef.gateName!];
+								const isSubcircuit = gateInfo?.Type.startsWith('Circuit');
+								if (!isSubcircuit) {
+									// Built-in gate - no port info available
+									return {
+										contents: {
+											kind: MarkupKind.Markdown,
+											value: `**Port:** ${connectionRef.gateName}.${portName}`
+										}
+									};
+								} else {
+									const gateType = (currentCircuit?.Gates[connectionRef.gateName!]?.Type)?.replace('Circuit:', '') || null;
+									const refCircuitInfo = findCircuitInfoForGateType(gateType!, circuitInfos!);
+									if (refCircuitInfo) {
+										const portInfo = (connectionRef.direction === 'in' ? refCircuitInfo.Inputs : refCircuitInfo.Outputs).find(p => p.Name === portName);
+										if (portInfo) {
+											return {
+												contents: {
+													kind: MarkupKind.Markdown,
+													value: `**Port:** ${refCircuitInfo.Name}.${portInfo.Name}\n\nBit Width: ${portInfo.BitWidth}`
+												}
+											};
+										}
+									}
+								}
+							}
+							break;
+						case 'direction':
+							{
+								// Check if the gate is builtin or a subcircuit
+								const gateInfo = currentCircuit?.Gates[connectionRef.gateName!];
+								const isSubcircuit = gateInfo?.Type.startsWith('Circuit');
+								const isLookupTable = gateInfo?.Type.startsWith('LookupTable');
+								const isBuiltin = gateInfo && !isSubcircuit && !isLookupTable;
+								if (isBuiltin) {
+									// Built-in gate - no block info available
+									return {
+										contents: {
+											kind: MarkupKind.Markdown,
+											value: `**Block:** ${connectionRef.direction === 'in' ? 'input' : 'output'} of builtin gate ${connectionRef.gateName!}`
+										}
+									};
+								} else if (isSubcircuit) {
+									const gateType = (currentCircuit?.Gates[connectionRef.gateName!]?.Type)?.replace('Circuit:', '') || null;
+									const refCircuitInfo = findCircuitInfoForGateType(gateType!, circuitInfos!);
+									if (refCircuitInfo) {
+										const blockInfo = connectionRef.direction === 'in' ? refCircuitInfo.Blocks?.['inputs'] : refCircuitInfo.Blocks?.['outputs'];
+										if (blockInfo) {
+											return {
+												contents: {
+													kind: MarkupKind.Markdown,
+													value: `**Block:** ${connectionRef.direction === 'in' ? 'input' : 'output'} of circuit: ${refCircuitInfo.Name}`
+												}
+											};
+										}
+									}
+								} else if (isLookupTable) {
+									// Lookup table - no block info available
+									return {
+										contents: {
+											kind: MarkupKind.Markdown,
+											value: `**Block:** ${connectionRef.direction === 'in' ? 'input' : 'output'} of lookup table: ${connectionRef.gateName!}`
+										}
+									};
+								}
+							}
+							break;
+						default:
+							console.log(`Unhandled connection ref target type: ${connectionRef.target}`);
+							break;
 					}
-				};
-			}
-		}
+				} else {
+					const portInCurrent = currentCircuit?.Inputs.find(p => p.Name === word) || currentCircuit?.Outputs.find(p => p.Name === word);
+					if (portInCurrent) {
+						return {
+							contents: {
+								kind: MarkupKind.Markdown,
+								value: `**Port:** ${portInCurrent.Name}\n\nBit Width: ${portInCurrent.BitWidth}`
+							}
+						};
+					}
+				}
+				break;
+			case 'gates':
+				{
+					// Show keyword info for Circuit() and LookupTable()
+					if (word === 'Circuit' || word === 'LookupTable') {
+						return {
+							contents: {
+								kind: MarkupKind.Markdown,
+								value: `**Keyword:** ${word}()\n\nReference another circuit or lookup table as a subcircuit.`
+							}
+						};
+					}
 
-		// Check if it's a gate instance
-		const circuitInfosGate = getCircuitInfo(text, documentDir, documentPath);
-		if (circuitInfosGate) {
-			for (const circuitInfo of circuitInfosGate) {
-				if (circuitInfo.Gates && circuitInfo.Gates[word]) {
-					const gateType = circuitInfo.Gates[word].Type;
-					if (gateType.startsWith('Circuit:')) {
-						const circuitName = gateType.substring('Circuit:'.length);
-						// Show circuit tooltip
-						let targetCircuit = circuitDefinitions.get(circuitName);
-						if (!targetCircuit) {
-							targetCircuit = circuitInfosGate.find((c) => c.Name === circuitName);
+					// Show builtin gate info
+					if (GateInfo[word]) {
+						return {
+							contents: {
+								kind: MarkupKind.Markdown,
+								value: `**Gate:** ${word}\n\n${GateInfo[word]}`
+							}
+						};
+					}
+
+					// Show subcircuit info
+					const gatesWithType = Object.values(currentCircuit?.Gates || {}).filter(g => g.Type.endsWith(word));
+					if (gatesWithType.length > 0) {
+						const gateInfo = gatesWithType[0];
+						const isSubcircuit = gateInfo.Type.startsWith('Circuit');
+						const isLookupTable = gateInfo.Type.startsWith('LookupTable');
+
+						if (isSubcircuit) {
+							const refCircuitInfo = findCircuitInfoForGateType(gateInfo.Type.replace('Circuit:', ''), circuitInfos!);
+							if (refCircuitInfo) {
+								const inputsStr = refCircuitInfo.Inputs.map(p => p.BitWidth === 1 ? p.Name : `${p.Name} [${p.BitWidth}]`).join(', ');
+								const outputsStr = refCircuitInfo.Outputs.map(p => p.BitWidth === 1 ? p.Name : `${p.Name} [${p.BitWidth}]`).join(', ');
+								return {
+									contents: {
+										kind: MarkupKind.Markdown,
+										value: `**Subcircuit:** ${word}\n\n**Inputs:** ${inputsStr || 'none'}\n\n**Outputs:** ${outputsStr || 'none'}`
+									}
+								};
+							} else {
+								return {
+									contents: {
+										kind: MarkupKind.Markdown,
+										value: `**Subcircuit:** ${word}\n\nCircuit definition not found.`
+									}
+								};
+							}
 						}
-						if (targetCircuit) {
-							const inputsStr = targetCircuit.Inputs?.join(', ') || '';
-							const outputsStr = targetCircuit.Outputs?.join(', ') || '';
-							const hoverText = `**Circuit: ${targetCircuit.Name}**\n\n` +
-								`**Inputs:** ${inputsStr || 'none'}\n\n` +
-								`**Outputs:** ${outputsStr || 'none'}\n\n` +
-								`*Defined in: ${path.basename(targetCircuit.FilePath || '')}*`;
-							return {
-								contents: {
-									kind: 'markdown',
-									value: hoverText
-								}
-							};
+
+						if (isLookupTable) {
+							const refTableInfo = findLookupTableInfo(word, circuitInfos!);
+							if (refTableInfo) {
+								const entries = Object.entries(refTableInfo.TruthTable);
+								const tableRows = entries.map(([input, output]) => `| ${input} | ${output} |`).join('\n');
+								const header = '| Input | Output |';
+								const separator = '| ----- | ------ |';
+								const truthTableFormatted = `${header}\n${separator}\n${tableRows}`;
+								const content: MarkupContent = {
+									kind: MarkupKind.Markdown,
+									value: `**Lookup Table:** ${word}\n\n**Input Width:** ${refTableInfo.InputWidth}\n\n**Output Width:** ${refTableInfo.OutputWidth}\n\n**Truth Table:**\n\`\`\`\n${truthTableFormatted}\n\`\`\``
+								};
+								return {
+									contents: content
+								};
+							}
 						} else {
 							return {
 								contents: {
-									kind: 'plaintext',
-									value: `Circuit not found: ${circuitName}`
+									kind: MarkupKind.Markdown,
+									value: `**Lookup Table:** ${word}\n\nLookup table definition not found.`
 								}
-							};
-						}
-					} else {
-						// Built-in gate
-						const gateTooltip = gateInfo[gateType];
-						if (gateTooltip) {
-							return {
-								contents: {
-									kind: 'markdown',
-									value: gateTooltip
-								}
-							};
-						} else {
-							return {
-								contents: {
-									kind: 'plaintext',
-									value: `Unknown gate type: ${gateType}`
-								}
-							};
+							}
 						}
 					}
 				}
-			}
+
+				break;
+			case 'inputs':
+				{
+					if (word === 'inputs') {
+						return {
+							contents: {
+								kind: MarkupKind.Markdown,
+								value: GateInfo['inputs']
+							}
+						};
+					}
+					// Show input port info
+					const portInfo = currentCircuit?.Inputs.find(p => p.Name === word);
+					if (portInfo) {
+						return {
+							contents: {
+								kind: MarkupKind.Markdown,
+								value: `**Input Port:** ${portInfo.Name}\n\nBit Width: ${portInfo.BitWidth}`
+							}
+						};
+					}
+				}
+				break;
+			case 'outputs':
+				{
+					if (word === 'outputs') {
+						return {
+							contents: {
+								kind: MarkupKind.Markdown,
+								value: GateInfo['outputs']
+							}
+						};
+					}
+					// Show output port info
+					const portInfo = currentCircuit?.Outputs.find(p => p.Name === word);
+					if (portInfo) {
+
+						return {
+							contents: {
+								kind: MarkupKind.Markdown,
+								value: `**Output Port:** ${portInfo.Name}\n\nBit Width: ${portInfo.BitWidth}`
+							}
+						};
+					}
+				}
+				break;
+			case 'lookup_tables':
+				{
+					// Show keyword lookup table info
+					if (word === 'lookup_tables') {
+						return {
+							contents: {
+								kind: MarkupKind.Markdown,
+								value: GateInfo['lookup_tables']
+							}
+						};
+					}
+
+					// Show lookup table definition info
+					const tableInfo = currentCircuit?.LookupTables[word];
+					if (tableInfo) {
+						const truthTableEntries = Object.entries(tableInfo.TruthTable)
+							.map(([input, output]) => `  ${input} -> ${output}`)
+							.join('\n');
+						return {
+							contents: {
+								kind: MarkupKind.Markdown,
+								value: `**Lookup Table:** ${word}\n\n**Input Width:** ${tableInfo.InputWidth}\n\n**Output Width:** ${tableInfo.OutputWidth}\n\n**Truth Table:**\n\`\`\`\n${truthTableEntries}\n\`\`\``
+							}
+						};
+					}
+				}
+				break;
+			default:
+				// Not inside a known block - could be top-level keywords or unknown context
+				console.log(`Hover: Unhandled or unknown block context with word ${word} at position: ${wordRange.start}-${wordRange.end}`);
+				if (word === 'circuit') {
+					return {
+						contents: {
+							kind: MarkupKind.Markdown,
+							value: '**Keyword:** circuit\n\nDefines a new circuit block.'
+						}
+					};
+				}
+				if (word === 'import') {
+					return {
+						contents: {
+							kind: MarkupKind.Markdown,
+							value: '**Keyword:** import\n\nImports another circuit file.'
+						}
+					};
+				}
+				break;
 		}
+
+		// No relevant hover info found
 
 		return null;
 	}
@@ -679,9 +897,6 @@ connection.onDefinition(
 
 		// Check in cached circuit's blocks first
 		const blockInfo = getBlockInfoAtPosition(document, wordRange.start);
-		if (blockInfo) {
-			console.log(`Found block info for word |${word}|: ${JSON.stringify(blockInfo)}`);
-		}
 
 		switch (blockInfo?.blockName) {
 			case 'connections':
@@ -689,8 +904,6 @@ connection.onDefinition(
 				const connectionRef = parseConnectionReference(word, text, offset);
 
 				if (connectionRef) {
-					console.log(`Connection ref type: ${connectionRef.target}, gate: ${connectionRef.gateName}, port: ${connectionRef.portName}, direction: ${connectionRef.direction}`);
-
 					switch (connectionRef.target) {
 						case 'gate':
 							// Go to gate definition
@@ -806,11 +1019,9 @@ connection.onDefinition(
 				break;
 			case 'gates':
 				// Check if word is a builtin gate
-				if (gateInfo[word]) {
-					console.log(`Go to definition: ${word} is a built-in gate`);
-					// Built-in gates don't have definitions to go to
+				if (GateInfo[word]) {
 					return {
-						uri: 'circuit-builtin:///' + word +'.circuit',
+						uri: 'circuit-builtin:///' + word + '.circuit',
 						range: {
 							start: { line: 0, character: 0 },
 							end: { line: 0, character: 0 }
@@ -849,13 +1060,13 @@ connection.onDefinition(
 							const gateType = circuitInfo.Gates[gateName].Type;
 							if (gateType === `LookupTable:${word}`) {
 								// Go find the lookup_tables block in current circuit
-								const blockInfo = currentCircuit?.Blocks[word];
-								if (blockInfo) {
+								const lutInfo = currentCircuit?.LookupTables[word];
+								if (lutInfo) {
 									return {
 										uri: textDocumentPosition.textDocument.uri,
 										range: {
-											start: { line: blockInfo.StartLine - 1, character: blockInfo.StartColumn - 1 },
-											end: { line: blockInfo.StartLine - 1, character: blockInfo.StartColumn - 1 + word.length }
+											start: { line: lutInfo.DefinitionLine - 1, character: lutInfo.DefinitionColumn - 1 },
+											end: { line: lutInfo.DefinitionLine - 1, character: lutInfo.DefinitionColumn - 1 + word.length }
 										}
 									};
 								}
@@ -930,7 +1141,6 @@ function parseConnectionReference(word: string, text: string, offset: number): {
 	let bestMatch: { target: 'gate' | 'port' | 'direction'; gateName: string; direction?: 'in' | 'out'; portName?: string } | null = null;
 
 	for (const m of allMatches) {
-		console.log(`Evaluating match: ${m.match}`);
 
 		const portName = m.hasPort ? m.match[2] : undefined;
 		const gateName = m.match[1];
@@ -942,13 +1152,10 @@ function parseConnectionReference(word: string, text: string, offset: number): {
 		let target: 'gate' | 'port' | 'direction' = 'port'; // default to port
 		if (word === gateName) {
 			target = 'gate';
-			console.log(`Cursor on gate name: ${gateName}`);
 		} else if (portName && word === portName) {
 			target = 'port';
-			console.log(`Cursor on port name: ${portName}`);
 		} else if (word === 'in' || word === 'out') {
 			target = 'direction';
-			console.log(`Cursor on direction: ${word}`);
 		} else {
 			// Fallback to position-based detection
 			const gateEnd = matchStart + gateName.length;
@@ -968,17 +1175,6 @@ function parseConnectionReference(word: string, text: string, offset: number): {
 	}
 
 	return bestMatch;
-}
-
-// Helper function to find port position in inputs/outputs block
-function findPortInBlock(blockContent: string, portName: string): { start: number; end: number } | null {
-	// Look for the port name in the block, handling spaces and commas
-	const portPattern = new RegExp(`\\b${portName}\\b`, 'g');
-	const match = portPattern.exec(blockContent);
-	if (match) {
-		return { start: match.index, end: match.index + portName.length };
-	}
-	return null;
 }
 
 // Helper function to get block info at a given position
@@ -1011,6 +1207,15 @@ function getBlockInfoAtPosition(document: TextDocument, offset: number): { block
 	}
 
 	return null;
+}
+
+function findLookupTableInfo(tableName: string, circuitInfos: CircuitInfo[]): LookupTableInfo | undefined {
+	for (const circuit of circuitInfos) {
+		if (circuit.LookupTables && circuit.LookupTables[tableName]) {
+			return circuit.LookupTables[tableName];
+		}
+	}
+	return undefined;
 }
 
 function findCircuitInfoForGateType(gateType: string, circuitInfos: CircuitInfo[]): CircuitInfo | undefined {

@@ -1,5 +1,5 @@
 // Gate information for hover tooltips
-export const gateInfo: { [key: string]: string } = {
+export const GateInfo: { [key: string]: string } = {
 	'AND': 'Logical AND gate\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 0\n0 | 1 | 0\n1 | 0 | 0\n1 | 1 | 1\n```',
 	'OR': 'Logical OR gate\n\nInputs: 2\nOutputs: 1\n\nTruth table:\n```\nA | B | Y\n0 | 0 | 0\n0 | 1 | 1\n1 | 0 | 1\n1 | 1 | 1\n```',
 	'NOT': 'Inverter gate\n\nInputs: 1\nOutputs: 1\n\nTruth table:\n```\nA | Y\n0 | 1\n1 | 0\n```',

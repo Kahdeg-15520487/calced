@@ -34,9 +34,12 @@
       ]
     },
     "circuit": {
-      "begin": "\\bcircuit\\b\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
+      "begin": "\\b(circuit)\\b\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
       "beginCaptures": {
         "1": {
+          "name": "keyword.control.circuit"
+        },
+        "2": {
           "name": "entity.name.type.circuit"
         }
       },
@@ -68,7 +71,12 @@
       ]
     },
     "inputs": {
-      "begin": "\\binputs\\b\\s*\\{",
+      "begin": "\\b(inputs)\\b\\s*\\{",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.circuit"
+        }
+      },
       "end": "\\}",
       "name": "meta.circuit.inputs",
       "patterns": [
@@ -78,7 +86,12 @@
       ]
     },
     "outputs": {
-      "begin": "\\boutputs\\b\\s*\\{",
+      "begin": "\\b(outputs)\\b\\s*\\{",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.circuit"
+        }
+      },
       "end": "\\}",
       "name": "meta.circuit.outputs",
       "patterns": [
@@ -88,7 +101,12 @@
       ]
     },
     "lookup-tables": {
-      "begin": "\\blookup_tables\\b\\s*\\{",
+      "begin": "\\b(lookup_tables)\\b\\s*\\{",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.circuit"
+        }
+      },
       "end": "\\}",
       "name": "meta.circuit.lookup-tables",
       "patterns": [
@@ -98,7 +116,12 @@
       ]
     },
     "gates": {
-      "begin": "\\bgates\\b\\s*\\{",
+      "begin": "\\b(gates)\\b\\s*\\{",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.circuit"
+        }
+      },
       "end": "\\}",
       "name": "meta.circuit.gates",
       "patterns": [
@@ -108,7 +131,12 @@
       ]
     },
     "connections": {
-      "begin": "\\bconnections\\b\\s*\\{",
+      "begin": "\\b(connections)\\b\\s*\\{",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.circuit"
+        }
+      },
       "end": "\\}",
       "name": "meta.circuit.connections",
       "patterns": [

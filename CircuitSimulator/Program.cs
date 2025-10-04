@@ -140,6 +140,22 @@ namespace CircuitSimulator
                         FilePath = circuitEntry.Value.FilePath,
                         DefinitionLine = circuitEntry.Value.DefinitionLine,
                         Gates = circuitEntry.Value.NamedGates.Where(g => !string.IsNullOrEmpty(g.Value.Type)).ToDictionary(g => g.Key, g => new GateInfo { Type = g.Value.Type, DefinitionLine = g.Value.DefinitionLine, DefinitionColumn = g.Value.DefinitionColumn }),
+                        LookupTables = circuitEntry.Value.LookupTables.ToDictionary(lut => lut.Key, lut => {
+                            var inputWidth = lut.Value.Keys.FirstOrDefault()?.Length ?? 0;
+                            var outputWidth = lut.Value.Values.FirstOrDefault()?.Length ?? 0;
+                            var defLine = circuitEntry.Value.Blocks.ContainsKey(lut.Key) ? circuitEntry.Value.Blocks[lut.Key].StartLine : 0;
+                            var defCol = circuitEntry.Value.Blocks.ContainsKey(lut.Key) ? circuitEntry.Value.Blocks[lut.Key].StartColumn : 0;
+                            circuitEntry.Value.Blocks.Remove(lut.Key);
+                            return new LookupTableInfo
+                            {
+                                Name = lut.Key,
+                                DefinitionLine = defLine,
+                                DefinitionColumn = defCol,
+                                InputWidth = inputWidth,
+                                OutputWidth = outputWidth,
+                                TruthTable = lut.Value.ToDictionary(entry => entry.Key, entry => string.Join("", entry.Value.Select(b => b ? "1" : "0")))
+                            };
+                        }),
                         Blocks = circuitEntry.Value.Blocks
                     });
                 }

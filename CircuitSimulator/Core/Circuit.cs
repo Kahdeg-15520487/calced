@@ -27,6 +27,9 @@ namespace CircuitSimulator.Core
         // Block information for LSP
         public Dictionary<string, BlockInfo> Blocks { get; } = new Dictionary<string, BlockInfo>();
 
+        // Lookup tables for this circuit
+        public Dictionary<string, Dictionary<string, bool[]>> LookupTables { get; } = new Dictionary<string, Dictionary<string, bool[]>>();
+
         public void AddGate(string name, Gate gate)
         {
             Gates.Add(gate);
