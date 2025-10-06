@@ -140,7 +140,8 @@ namespace CircuitSimulator
                         FilePath = circuitEntry.Value.FilePath,
                         DefinitionLine = circuitEntry.Value.DefinitionLine,
                         Gates = circuitEntry.Value.NamedGates.Where(g => !string.IsNullOrEmpty(g.Value.Type)).ToDictionary(g => g.Key, g => new GateInfo { Type = g.Value.Type, DefinitionLine = g.Value.DefinitionLine, DefinitionColumn = g.Value.DefinitionColumn }),
-                        LookupTables = circuitEntry.Value.LookupTables.ToDictionary(lut => lut.Key, lut => {
+                        LookupTables = circuitEntry.Value.LookupTables.ToDictionary(lut => lut.Key, lut =>
+                        {
                             var inputWidth = lut.Value.Keys.FirstOrDefault()?.Length ?? 0;
                             var outputWidth = lut.Value.Values.FirstOrDefault()?.Length ?? 0;
                             var defLine = circuitEntry.Value.Blocks.ContainsKey(lut.Key) ? circuitEntry.Value.Blocks[lut.Key].StartLine : 0;
@@ -207,6 +208,90 @@ namespace CircuitSimulator
             {
                 Console.WriteLine($"Synthesis error: {ex.Message}");
             }
+        }
+
+        static void RunTokensMode(string? dslFile)
+        {
+            string dsl;
+            if (dslFile != null)
+            {
+                dsl = File.ReadAllText(dslFile);
+            }
+            else
+            {
+                // Read from stdin
+                dsl = Console.In.ReadToEnd();
+            }
+
+            var lexer = new Lexer(dsl);
+            var tokens = lexer.Tokenize(skipCommentToken: false).ToList();
+
+            // Semantic token types: ['circuitKeyword', 'circuitOperator', 'circuitFunction', 'comment', 'string', 'identifier']
+            var gateNames = new HashSet<string> { "AND", "OR", "NOT", "NAND", "NOR", "XOR", "XNOR", "DFF", "Circuit", "LookupTable" };
+
+            var semanticTokens = new List<int[]>();
+            foreach (var token in tokens)
+            {
+                if (token.Type == TokenType.EOF) continue;
+
+                int typeIndex;
+                switch (token.Type)
+                {
+                    case TokenType.CIRCUIT:
+                    case TokenType.INPUTS:
+                    case TokenType.OUTPUTS:
+                    case TokenType.GATES:
+                    case TokenType.CONNECTIONS:
+                    case TokenType.LOOKUP_TABLES:
+                    case TokenType.IMPORT:
+                        typeIndex = 0; // circuitKeyword
+                        break;
+                    case TokenType.IDENTIFIER:
+                        if (gateNames.Contains(token.Value))
+                        {
+                            typeIndex = 2; // circuitFunction
+                        }
+                        else
+                        {
+                            typeIndex = 5; // identifier
+                        }
+                        break;
+                    case TokenType.STRING:
+                        typeIndex = 4; // string
+                        break;
+                    case TokenType.NUMBER:
+                        typeIndex = 5; // identifier
+                        break;
+                    case TokenType.LBRACE:
+                    case TokenType.RBRACE:
+                    case TokenType.LBRACKET:
+                    case TokenType.RBRACKET:
+                    case TokenType.LPAREN:
+                    case TokenType.RPAREN:
+                    case TokenType.ARROW:
+                    case TokenType.COMMA:
+                    case TokenType.EQUALS:
+                    case TokenType.DOT:
+                        typeIndex = 1; // circuitOperator
+                        break;
+                    case TokenType.COMMENT:
+                        typeIndex = 3; // comment
+                        Console.WriteLine(token.Value);
+                        break;
+                    default:
+                        typeIndex = 5; // identifier
+                        break;
+                }
+
+                // Convert to 0-based
+                int line = token.Line - 1;
+                int col = token.Column - 1;
+                int length = token.Type == TokenType.STRING ? token.Value.Length + 2 : token.Value.Length;
+                semanticTokens.Add(new[] { line, col, length, typeIndex, 0 });
+            }
+
+            // Output as JSON
+            // Console.WriteLine(JsonSerializer.Serialize(semanticTokens));
         }
 
         static void RunSimulationMode(string dslFile, string basePath, string[] args)
@@ -467,13 +552,16 @@ namespace CircuitSimulator
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("Usage: CircuitSimulator <dsl-file> [--<input>=<value>]... [--ticks=N] [--verify] [--info]");
+                Console.WriteLine("Usage: CircuitSimulator <dsl-file> [--<input>=<value>]... [--ticks=N] [--verify] [--info] [--tokens]");
                 Console.WriteLine("       CircuitSimulator --synthesize=\"expression\" [--out=<file>]");
+                Console.WriteLine("       CircuitSimulator --tokens [<dsl-file>]  # Read from stdin if no file");
                 Console.WriteLine("Examples:");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --ticks=10");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --b=false --ticks=5");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --verify  # For LSP validation");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --info    # For LSP hover info");
+                Console.WriteLine("  CircuitSimulator circuit.circuit --tokens  # Output semantic tokens for file");
+                Console.WriteLine("  echo \"circuit Test {}\" | CircuitSimulator --tokens  # Output tokens from stdin");
                 Console.WriteLine("  CircuitSimulator --synthesize=\"xor(and(a,b),or(a,c))\"  # Synthesize circuit from expression");
                 Console.WriteLine("  CircuitSimulator --synthesize=\"xor(and(a,b),or(a,c))\" --out=synth.circuit  # Save to file");
                 return;
@@ -483,8 +571,22 @@ namespace CircuitSimulator
             var isVerifyMode = args.Contains("--verify");
             var isInfoMode = args.Contains("--info");
             var isSynthesizeMode = false;
+            var isTokensMode = args.Contains("--tokens");
             string? synthesizeExpression = null;
             string? outFile = null;
+
+            // If dslFile is null but we have args, check if any arg is a file (not starting with --)
+            if (dslFile == null)
+            {
+                foreach (var arg in args)
+                {
+                    if (!arg.StartsWith("--"))
+                    {
+                        dslFile = arg;
+                        break;
+                    }
+                }
+            }
 
             // Parse arguments
             string? customBasePath = null;
@@ -518,6 +620,12 @@ namespace CircuitSimulator
                     return;
                 }
                 RunSynthesizeMode(synthesizeExpression, outFile);
+                return;
+            }
+
+            if (isTokensMode)
+            {
+                RunTokensMode(dslFile);
                 return;
             }
 

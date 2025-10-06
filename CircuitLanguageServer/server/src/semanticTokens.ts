@@ -1,4 +1,6 @@
 import { SemanticTokensParams, SemanticTokensBuilder } from 'vscode-languageserver/node';
+import { spawn } from 'child_process';
+import * as path from 'path';
 
 import { connection, documents } from './connection';
 
@@ -9,79 +11,54 @@ export function initializeSemanticTokensHandler(): void {
 		if (!document) return { data: [] };
 
 		const text = document.getText();
-		const builder = new SemanticTokensBuilder();
 
-		// Define token type indices based on the legend
-		const TOKEN_TYPES = {
-			circuitKeyword: 0,
-			circuitOperator: 1,
-			circuitFunction: 2,
-			comment: 3,
-			string: 4,
-			identifier: 5
-		};
+		// Path to CircuitSimulator.dll
+		const dllPath = path.join(__dirname, '..', '..', 'bin', 'CircuitSimulator.dll');
 
-		// Known tokens that are not identifiers
-		const knownTokens = new Set([
-			'circuit', 'import', 'inputs', 'outputs', 'lookup_tables', 'gates', 'connections',
-			'AND', 'OR', 'NOT', 'NAND', 'NOR', 'XOR', 'XNOR', 'DFF', 'Circuit', 'LookupTable'
-		]);
+		return new Promise((resolve) => {
+			const child = spawn('dotnet', [dllPath, '--tokens'], {
+				stdio: ['pipe', 'pipe', 'pipe']
+			});
 
-		const lines = text.split('\n');
-		let lineIndex = 0;
+			let output = '';
+			let errorOutput = '';
 
-		for (const line of lines) {
-			// Comments (parse first to avoid conflicts)
-			const commentRegex = /\/\/.*$/g;
-			let match;
-			while ((match = commentRegex.exec(line)) !== null) {
-				builder.push(lineIndex, match.index, match[0].length, TOKEN_TYPES.comment, 0);
-			}
+			child.stdout.on('data', (data) => {
+				output += data.toString();
+			});
 
-			// Strings (parse before keywords/operators to avoid highlighting inside strings)
-			const stringRegex = /"[^"]*"/g;
-			while ((match = stringRegex.exec(line)) !== null) {
-				builder.push(lineIndex, match.index, match[0].length, TOKEN_TYPES.string, 0);
-			}
+			child.stderr.on('data', (data) => {
+				errorOutput += data.toString();
+			});
 
-			// Keywords
-			const keywordRegex = /\b(circuit|import|inputs|outputs|lookup_tables|gates|connections)\b/g;
-			while ((match = keywordRegex.exec(line)) !== null) {
-				builder.push(lineIndex, match.index, match[0].length, TOKEN_TYPES.circuitKeyword, 0);
-			}
-
-			// Operators (handle -> first as it's multi-character)
-			const operatorPatterns = [
-				{ regex: /->/g, type: TOKEN_TYPES.circuitOperator },
-				{ regex: /[=\.(){}[\]]/g, type: TOKEN_TYPES.circuitOperator }
-			];
-
-			for (const pattern of operatorPatterns) {
-				pattern.regex.lastIndex = 0; // Reset regex state
-				while ((match = pattern.regex.exec(line)) !== null) {
-					builder.push(lineIndex, match.index, match[0].length, pattern.type, 0);
+			child.on('close', (code) => {
+				if (code !== 0) {
+					console.error('CircuitSimulator --tokens failed:', errorOutput);
+					resolve({ data: [] });
+					return;
 				}
-			}
 
-			// Functions: gate names and built-in functions followed by (
-			const functionRegex = /\b(AND|OR|NOT|NAND|NOR|XOR|XNOR|DFF|Circuit|LookupTable)\b(?=\s*\()/g;
-			while ((match = functionRegex.exec(line)) !== null) {
-				builder.push(lineIndex, match.index, match[0].length, TOKEN_TYPES.circuitFunction, 0);
-			}
-
-			// Identifiers: words that are not known tokens
-			const identifierRegex = /\b[a-zA-Z_][a-zA-Z0-9_]*\b/g;
-			while ((match = identifierRegex.exec(line)) !== null) {
-				const word = match[0];
-				if (!knownTokens.has(word)) {
-					console.log(`Identifier found: ${word} at line ${lineIndex}, char ${match.index}`);
-					builder.push(lineIndex, match.index, match[0].length, TOKEN_TYPES.identifier, 0);
+				try {
+					const tokens: number[][] = JSON.parse(output.trim());
+					const builder = new SemanticTokensBuilder();
+					for (const token of tokens) {
+						builder.push(token[0], token[1], token[2], token[3], token[4]);
+					}
+					resolve(builder.build());
+				} catch (e) {
+					console.error('Failed to parse tokens JSON:', e);
+					resolve({ data: [] });
 				}
-			}
+			});
 
-			lineIndex++;
-		}
+			child.on('error', (err) => {
+				console.error('Failed to spawn CircuitSimulator:', err);
+				resolve({ data: [] });
+			});
 
-		return builder.build();
+			// Send the document text to stdin
+			child.stdin.write(text);
+			child.stdin.end();
+		});
 	});
 }

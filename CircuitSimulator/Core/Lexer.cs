@@ -68,7 +68,7 @@ namespace CircuitSimulator.Core
             _column = 1;
         }
 
-        public IEnumerable<Token> Tokenize()
+        public IEnumerable<Token> Tokenize(bool skipCommentToken = true)
         {
             while (_position < _input.Length)
             {
@@ -82,8 +82,15 @@ namespace CircuitSimulator.Core
 
                 if (current == '/' && Peek() == '/')
                 {
-                    SkipComment();
-                    continue;
+                    var commentToken = SkipComment();
+                    if (skipCommentToken)
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        yield return commentToken;
+                    }
                 }
 
                 switch (current)
@@ -147,13 +154,22 @@ namespace CircuitSimulator.Core
             }
         }
 
-        private void SkipComment()
+        private Token SkipComment()
         {
+            int startColumn = _column;
+            int start = _position;
+            // skip "//"
+            _position += 2;
+            _column += 2;
+
             while (_position < _input.Length && _input[_position] != '\n')
             {
                 _position++;
                 _column++;
             }
+
+            string value = _input.Substring(start, _position - start);
+            return new Token(TokenType.COMMENT, value, _line, startColumn);
         }
 
         private Token ConsumeToken(TokenType type, string value)
