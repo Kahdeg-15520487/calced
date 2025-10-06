@@ -1,0 +1,29 @@
+circuit NandRegister {
+    inputs { d, clk }
+    outputs { q }
+    gates {
+        not_d = NAND()      // ~d
+        nand_s = NAND()     // S = NAND(d, clk) - active low set
+        nand_r = NAND()     // R = NAND(~d, clk) - active low reset
+        nand_q = NAND()     // Q = NAND(S, Q')
+        nand_qbar = NAND()  // Q' = NAND(R, Q)
+    }
+    connections {
+        d -> not_d.in[0]     // ~d
+        d -> not_d.in[1]
+        
+        d -> nand_s.in[0]    // S = NAND(d, clk)
+        clk -> nand_s.in[1]
+        
+        not_d.out -> nand_r.in[0]  // R = NAND(~d, clk)
+        clk -> nand_r.in[1]
+        
+        nand_s.out -> nand_q.in[0]   // Q = NAND(S, Q')
+        nand_qbar.out -> nand_q.in[1]
+        
+        nand_r.out -> nand_qbar.in[0]  // Q' = NAND(R, Q)
+        nand_q.out -> nand_qbar.in[1]
+        
+        nand_q.out -> q           // Output
+    }
+}

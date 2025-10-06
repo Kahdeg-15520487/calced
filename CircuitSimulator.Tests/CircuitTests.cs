@@ -74,29 +74,29 @@ namespace CircuitSimulator.Tests
         [Theory]
         [InlineData(@"
 circuit NandRegister {
-    inputs { data, clk }
+    inputs { d, clk }
     outputs { q }
     gates {
-        not_d = NAND()      // ~data
-        nand_s = NAND()     // S' = ~(data & clk)
-        nand_r = NAND()     // R' = ~(~data & clk)
-        nand_q = NAND()     // Q = ~(R' & Q')
-        nand_qbar = NAND()  // Q' = ~(S' & Q)
+        not_d = NAND()      // ~d
+        nand_s = NAND()     // S = NAND(d, clk) - active low set
+        nand_r = NAND()     // R = NAND(~d, clk) - active low reset
+        nand_q = NAND()     // Q = NAND(S, Q')
+        nand_qbar = NAND()  // Q' = NAND(R, Q)
     }
     connections {
-        data -> not_d.in[0]     // ~data
-        data -> not_d.in[1]
+        d -> not_d.in[0]     // ~d
+        d -> not_d.in[1]
         
-        data -> nand_s.in[0]    // S' = ~(data & clk)
+        d -> nand_s.in[0]    // S = NAND(d, clk)
         clk -> nand_s.in[1]
         
-        not_d.out -> nand_r.in[0]  // R' = ~(~data & clk)
+        not_d.out -> nand_r.in[0]  // R = NAND(~d, clk)
         clk -> nand_r.in[1]
         
-        nand_r.out -> nand_q.in[0]   // Q = ~(R' & Q')
+        nand_s.out -> nand_q.in[0]   // Q = NAND(S, Q')
         nand_qbar.out -> nand_q.in[1]
         
-        nand_s.out -> nand_qbar.in[0]  // Q' = ~(S' & Q)
+        nand_r.out -> nand_qbar.in[0]  // Q' = NAND(R, Q)
         nand_q.out -> nand_qbar.in[1]
         
         nand_q.out -> q           // Output
@@ -125,25 +125,25 @@ circuit DflipFlop {
         nor_q.out -> nor_qbar.in[1]
         nor_q.out -> q
     }
-}")]
-[InlineData(@"
+}")]  
+        [InlineData(@"
 circuit NorRegister {
-    inputs { data, clk }
+    inputs { d, clk }
     outputs { q }
     gates {
-        not_d = NOT()       // ~data
-        and_s = AND()       // S = data & clk
-        and_r = AND()       // R = ~data & clk
+        not_d = NOT()       // ~d
+        and_s = AND()       // S = d & clk
+        and_r = AND()       // R = ~d & clk
         nor_q = NOR()       // Q = ~(R | Q')
         nor_qbar = NOR()    // Q' = ~(S | Q)
     }
     connections {
-        data -> not_d.in[0]     // ~data
+        d -> not_d.in[0]     // ~d
         
-        data -> and_s.in[0]     // S = data & clk
+        d -> and_s.in[0]     // S = d & clk
         clk -> and_s.in[1]
         
-        not_d.out -> and_r.in[0]   // R = ~data & clk
+        not_d.out -> and_r.in[0]   // R = ~d & clk
         clk -> and_r.in[1]
         
         and_r.out -> nor_q.in[0]    // Q = ~(R | Q')
@@ -169,7 +169,15 @@ circuit NorRegister {
             var qGate = circuit.ExternalOutputs["q"];
             Assert.NotNull(qGate);
 
-            // Initial state: q is false (converged state of NOR SR latch with default inputs)
+            // Initialize NAND SR latch to valid state: Q=0, Q'=1
+            // For NAND SR: nand_q = 0, nand_qbar = 1
+            if (circuit.Name.Contains("Nand") && circuit.NamedGates.ContainsKey("nand_q") && circuit.NamedGates.ContainsKey("nand_qbar"))
+            {
+                circuit.NamedGates["nand_q"].Outputs[0] = false;  // Q = 0
+                circuit.NamedGates["nand_qbar"].Outputs[0] = true; // Q' = 1
+            }
+
+            // Initial state: q is false (converged state of SR latch with default inputs)
             Assert.False(qGate.Output);
 
             // Set data=1, clk=0, tick -> q still false (hold)
@@ -194,7 +202,7 @@ circuit NorRegister {
             circuit.Tick();
             Assert.False(qGate.Output);
 
-            // Additional iterations: Set data=1, clk=0, tick -> q still false
+            // Additional iterations: Set d=1, clk=0, tick -> q still false
             circuit.ExternalInputs["d"] = true;
             circuit.ExternalInputs["clk"] = false;
             circuit.Tick();
