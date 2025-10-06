@@ -1,12 +1,29 @@
-circuit SequentialTest {
-    inputs { data, clk }
-    outputs { q }
+circuit DflipFlop {
+    inputs { d, d2, clk }
+    outputs { q, q2 }
     gates {
-        dff1 = DFF()
+        not_d = NOT()
+        and_s = AND()
+        and_r = AND()
+        nor_q = NOR()
+        nor_qbar = NOR()
+
+        dff = DFF()
     }
     connections {
-        data -> dff1.in[0]
-        clk -> dff1.in[1]
-        dff1.out -> q
+        d -> not_d.in[0]
+        d -> and_s.in[0]
+        clk -> and_s.in[1]
+        not_d.out -> and_r.in[0]
+        clk -> and_r.in[1]
+        and_r.out -> nor_q.in[0]
+        nor_qbar.out -> nor_q.in[1]
+        and_s.out -> nor_qbar.in[0]
+        nor_q.out -> nor_qbar.in[1]
+        nor_q.out -> q
+
+        d2 -> dff.in[0]
+        clk -> dff.in[1]
+        dff.out -> q2
     }
 }

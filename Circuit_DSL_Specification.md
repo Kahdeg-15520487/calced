@@ -4,6 +4,8 @@
 
 The Circuit DSL (Domain Specific Language) is a text-based format for defining digital circuits composed of logic gates and subcircuits. Circuits are defined in `.circuit` files and can reference other circuits through imports.
 
+The DSL supports both **combinational** and **sequential** circuits. Sequential circuits include a special `clk` input that triggers output updates on rising clock edges, enabling proper simulation of flip-flops, registers, and other state-holding elements.
+
 ## File Structure
 
 ```
@@ -43,12 +45,13 @@ circuit CircuitName {
 ### Inputs Block
 
 ```
-inputs { name1, name2, array_name[size] }
+inputs { name1, name2, array_name[size], clk }
 ```
 
 - Single inputs: `input_name`
 - Array inputs: `array_name[size]` creates indexed inputs `array_name[0]` through `array_name[size-1]`
 - Size must be a positive integer
+- **Special Input: `clk`** - When present, marks the circuit as sequential. External outputs only update on rising clock edges (0→1 transitions), simulating edge-triggered behavior like flip-flops.
 
 ### Outputs Block
 
@@ -110,7 +113,12 @@ custom_name = LookupTable("table_name")
 | `NOR()` | NOR gate | 2 | 1 |
 | `XOR()` | Exclusive OR | 2 | 1 |
 | `XNOR()` | Exclusive NOR | 2 | 1 |
-| `DFF()` | D Flip-Flop | 1 (data) + 1 (clock) | 1 |
+| `DFF()` | **Sequential** D Flip-Flop | 2 (data + clock) | 1 |
+
+**Sequential Gates:**
+- `DFF()`: Captures data input on rising clock edge, holds value until next clock edge
+- Requires both data and clock inputs
+- Output only changes on clock rising edges (0→1)
 
 #### Subcircuits
 
@@ -151,6 +159,30 @@ connections {
 - **Subcircuit outputs:** `subcircuit_name.out` or `subcircuit_name.out[index]`
 - **Circuit inputs:** `input_name` or `array_input[index]`
 
+## Sequential Circuit Behavior
+
+Circuits become **sequential** when they include a `clk` input. Sequential circuits exhibit different simulation behavior:
+
+### Clock Edge Detection
+- The simulator automatically detects **rising clock edges** (transitions from 0 to 1 on the `clk` input)
+- Clock state is tracked internally to identify edge transitions
+
+### Edge-Triggered Updates
+- **Combinational circuits**: Outputs update immediately when inputs change
+- **Sequential circuits**: External outputs only update on rising clock edges
+- Internal gate computations occur on every simulation tick, but outputs are held constant until the next clock edge
+
+### Sequential Gate Behavior
+- Sequential gates like `DFF()` only change state on clock edges
+- This enables proper simulation of flip-flops, registers, and other state-holding elements
+- Multiple sequential gates in the same circuit synchronize their updates to the same clock edge
+- **Implementation Note**: NAND-based SR latches may not converge to correct initial states in combinational simulation. Use NOR-based SR latches for reliable sequential behavior.
+
+### Simulation Timing
+- `Tick()` method advances simulation by one time step
+- For sequential circuits: internal state converges, but outputs only update if clock rose
+- For combinational circuits: outputs update immediately to reflect new input values
+
 ## Comments
 
 - Lines beginning with `//` are treated as comments
@@ -175,22 +207,104 @@ circuit BasicTest {
 }
 ```
 
-### Circuit with Arrays
+### Sequential Circuit with DFF
 
 ```
-circuit MultiBitTest {
-    inputs { value[2] }
-    outputs { result }
+circuit Register {
+    inputs { data, clk }
+    outputs { q }
     gates {
-        or1 = OR()
+        dff1 = DFF()
     }
     connections {
-        value[0] -> or1.in[0]
-        value[1] -> or1.in[1]
-        or1.out -> result
+        data -> dff1.in[0]  // Data input
+        clk -> dff1.in[1]   // Clock input
+        dff1.out -> q       // Output
     }
 }
 ```
+
+- This circuit captures the `data` input value on each rising edge of `clk`
+- The output `q` holds its value between clock edges
+- Demonstrates edge-triggered sequential behavior
+
+### NAND-based DFF Implementation
+
+```
+circuit NandRegister {
+    inputs { data, clk }
+    outputs { q }
+    gates {
+        not_d = NAND()      // ~data
+        nand_s = NAND()     // S' = ~(data & clk)
+        nand_r = NAND()     // R' = ~(~data & clk)
+        nand_q = NAND()     // Q = ~(R' & Q')
+        nand_qbar = NAND()  // Q' = ~(S' & Q)
+    }
+    connections {
+        data -> not_d.in[0]     // ~data
+        data -> not_d.in[1]
+        
+        data -> nand_s.in[0]    // S' = ~(data & clk)
+        clk -> nand_s.in[1]
+        
+        not_d.out -> nand_r.in[0]  // R' = ~(~data & clk)
+        clk -> nand_r.in[1]
+        
+        nand_r.out -> nand_q.in[0]   // Q = ~(R' & Q')
+        nand_qbar.out -> nand_q.in[1]
+        
+        nand_s.out -> nand_qbar.in[0]  // Q' = ~(S' & Q)
+        nand_q.out -> nand_qbar.in[1]
+        
+        nand_q.out -> q           // Output
+    }
+}
+```
+
+- NAND-based D flip-flop using SR latch with clock gating
+- `not_d`: Inverts data input
+- `nand_s`: Active-low set signal (0 when data=1 and clk=1)
+- `nand_r`: Active-low reset signal (0 when data=0 and clk=1)
+- `nand_q`/`nand_qbar`: Cross-coupled NAND SR latch
+- **⚠️ Limitation**: NAND SR latches have convergence issues in combinational simulation and may not reach correct initial states. NOR-based implementations are recommended for reliable sequential behavior.
+
+### Recommended NOR-based DFF Implementation
+
+```
+circuit NorRegister {
+    inputs { data, clk }
+    outputs { q }
+    gates {
+        not_d = NOT()       // ~data
+        and_s = AND()       // S = data & clk
+        and_r = AND()       // R = ~data & clk
+        nor_q = NOR()       // Q = ~(R | Q')
+        nor_qbar = NOR()    // Q' = ~(S | Q)
+    }
+    connections {
+        data -> not_d.in[0]     // ~data
+        
+        data -> and_s.in[0]     // S = data & clk
+        clk -> and_s.in[1]
+        
+        not_d.out -> and_r.in[0]   // R = ~data & clk
+        clk -> and_r.in[1]
+        
+        and_r.out -> nor_q.in[0]    // Q = ~(R | Q')
+        nor_qbar.out -> nor_q.in[1]
+        
+        and_s.out -> nor_qbar.in[0] // Q' = ~(S | Q)
+        nor_q.out -> nor_qbar.in[1]
+        
+        nor_q.out -> q            // Output
+    }
+}
+```
+
+- NOR-based D flip-flop using SR latch with clock gating
+- Provides reliable convergence and proper sequential behavior
+- Recommended for implementing DFFs in the Circuit DSL
 
 ### Circuit with Multi-Bit Lookup Tables
 
@@ -240,5 +354,9 @@ All exceptions inherit from `DSLParseException` for unified error handling.
 - Gate and signal names follow C# identifier rules
 - Array indices are 0-based
 - Subcircuits are instantiated as `CircuitGate` objects
-- Connections are validated at parse time for existence of sources and targets</content>
+- Connections are validated at parse time for existence of sources and targets
+- **Sequential circuits** (with `clk` input) use edge-triggered simulation
+- Clock edge detection enables proper timing simulation for state-holding elements
+- Internal convergence occurs on every tick, but outputs update only on clock edges for sequential circuits
+- **NAND SR latches may have convergence issues** - use NOR SR latches for reliable sequential behavior</content>
 <parameter name="filePath">j:\workspace2\c#\calced\Circuit_DSL_Specification.md

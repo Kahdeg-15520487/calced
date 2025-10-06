@@ -2,28 +2,28 @@ circuit DFF {
     inputs { d, clk }
     outputs { q }
     gates {
-        nand1 = NAND()  // clock inverter
-        nand2 = NAND()  // master latch
-        nand3 = NAND()  // master latch
-        nand4 = NAND()  // slave latch
-        nand5 = NAND()  // slave latch
+        nand3 = NAND()  // ~d
+        nand4 = NAND()  // S = d & clk
+        nand5 = NAND()  // R = ~d & clk
+        nand1 = NAND()  // ~q
+        nand2 = NAND()  // q
     }
     connections {
-        clk -> nand1.in[0]
-        clk -> nand1.in[1]  // ~clk = nand1.out
+        d -> nand3.in[0]
+        d -> nand3.in[1]  // ~d
         
-        d -> nand2.in[0]
-        nand1.out -> nand2.in[1]  // d & ~clk
+        d -> nand4.in[0]
+        clk -> nand4.in[1]  // S = d & clk
         
-        nand2.out -> nand3.in[0]
-        nand1.out -> nand3.in[1]  // master latch feedback
+        nand3.out -> nand5.in[0]
+        clk -> nand5.in[1]  // R = ~d & clk
         
-        nand3.out -> nand4.in[0]
-        clk -> nand4.in[1]  // slave latch
+        nand4.out -> nand1.in[0]
+        nand2.out -> nand1.in[1]  // ~q
         
-        nand4.out -> nand5.in[0]
-        clk -> nand5.in[1]  // slave latch feedback
+        nand5.out -> nand2.in[0]
+        nand1.out -> nand2.in[1]  // q
         
-        nand5.out -> q
+        nand2.out -> q
     }
 }

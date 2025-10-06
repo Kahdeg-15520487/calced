@@ -1,0 +1,28 @@
+circuit NorRegister {
+    inputs { data, clk }
+    outputs { q }
+    gates {
+        not_d = NOT()       // ~data
+        and_s = AND()       // S = data & clk
+        and_r = AND()       // R = ~data & clk
+        nor_q = NOR()       // Q = ~(R | Q')
+        nor_qbar = NOR()    // Q' = ~(S | Q)
+    }
+    connections {
+        data -> not_d.in[0]     // ~data
+        
+        data -> and_s.in[0]     // S = data & clk
+        clk -> and_s.in[1]
+        
+        not_d.out -> and_r.in[0]   // R = ~data & clk
+        clk -> and_r.in[1]
+        
+        and_r.out -> nor_q.in[0]    // Q = ~(R | Q')
+        nor_qbar.out -> nor_q.in[1]
+        
+        and_s.out -> nor_qbar.in[0] // Q' = ~(S | Q)
+        nor_q.out -> nor_qbar.in[1]
+        
+        nor_q.out -> q            // Output
+    }
+}

@@ -30,6 +30,10 @@ namespace CircuitSimulator.Core
         // Lookup tables for this circuit
         public Dictionary<string, Dictionary<string, bool[]>> LookupTables { get; } = new Dictionary<string, Dictionary<string, bool[]>>();
 
+        // Clock-aware simulation
+        public bool PreviousClock { get; set; } = false;
+        public Dictionary<string, bool> PreviousExternalOutputs { get; } = new();
+
         public void AddGate(string name, Gate gate)
         {
             Gates.Add(gate);
@@ -55,9 +59,31 @@ namespace CircuitSimulator.Core
         // Simulate one tick: propagate signals
         public void Tick()
         {
-            // For combinational circuits, do multiple passes to propagate signals
-            for (int pass = 0; pass < 3; pass++)
+            // Clock-aware simulation: detect rising edge
+            bool currentClock = ExternalInputs.ContainsKey("clk") ? ExternalInputs["clk"] : false;
+            bool clockRising = currentClock && !PreviousClock;
+            PreviousClock = currentClock;
+
+            // Save current external outputs before convergence
+            PreviousExternalOutputs.Clear();
+            foreach (var kv in ExternalOutputs)
             {
+                if (kv.Value != null)
+                {
+                    PreviousExternalOutputs[kv.Key] = kv.Value.Output;
+                }
+            }
+
+            // Dynamic convergence detection: run until no changes or max passes
+            Dictionary<Gate, bool> previousOutputs = Gates.ToDictionary(g => g, g => g.Outputs[0]);
+            bool changed = true;
+            int pass = 0;
+            const int MAX_PASSES = 100;
+            while (changed && pass < MAX_PASSES)
+            {
+                changed = false;
+                pass++;
+
                 // First, set inputs based on connections
                 foreach (var gate in Gates)
                 {
@@ -117,6 +143,28 @@ namespace CircuitSimulator.Core
                     if (gate is SubcircuitOutputGate || gate is LookupTableOutputGate)
                     {
                         gate.Compute();
+                    }
+                }
+
+                // Check for changes
+                foreach (var gate in Gates)
+                {
+                    if (gate.Outputs[0] != previousOutputs[gate])
+                    {
+                        changed = true;
+                        previousOutputs[gate] = gate.Outputs[0];
+                    }
+                }
+            }
+
+            // For sequential circuits, only update external outputs on rising clock edge
+            if (!clockRising)
+            {
+                foreach (var kv in PreviousExternalOutputs)
+                {
+                    if (ExternalOutputs.ContainsKey(kv.Key) && ExternalOutputs[kv.Key] is Gate gate)
+                    {
+                        gate.Outputs[0] = kv.Value;
                     }
                 }
             }
