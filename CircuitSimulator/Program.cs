@@ -276,7 +276,6 @@ namespace CircuitSimulator
                         break;
                     case TokenType.COMMENT:
                         typeIndex = 3; // comment
-                        Console.WriteLine(token.Value);
                         break;
                     default:
                         typeIndex = 5; // identifier
@@ -291,7 +290,7 @@ namespace CircuitSimulator
             }
 
             // Output as JSON
-            // Console.WriteLine(JsonSerializer.Serialize(semanticTokens));
+            Console.WriteLine(JsonSerializer.Serialize(semanticTokens));
         }
 
         static void RunSimulationMode(string dslFile, string basePath, string[] args)
@@ -567,7 +566,6 @@ namespace CircuitSimulator
                 return;
             }
 
-            var dslFile = args.Length > 0 && !args[0].StartsWith("--") ? args[0] : null;
             var isVerifyMode = args.Contains("--verify");
             var isInfoMode = args.Contains("--info");
             var isSynthesizeMode = false;
@@ -575,18 +573,8 @@ namespace CircuitSimulator
             string? synthesizeExpression = null;
             string? outFile = null;
 
-            // If dslFile is null but we have args, check if any arg is a file (not starting with --)
-            if (dslFile == null)
-            {
-                foreach (var arg in args)
-                {
-                    if (!arg.StartsWith("--"))
-                    {
-                        dslFile = arg;
-                        break;
-                    }
-                }
-            }
+            var dslFile = args.Length > 0 && !args[0].StartsWith("--") ? args[0] : 
+                          (isTokensMode && args.Length > 1 ? args[1] : null);
 
             // Parse arguments
             string? customBasePath = null;

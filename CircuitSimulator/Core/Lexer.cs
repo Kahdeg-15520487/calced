@@ -83,14 +83,11 @@ namespace CircuitSimulator.Core
                 if (current == '/' && Peek() == '/')
                 {
                     var commentToken = SkipComment();
-                    if (skipCommentToken)
-                    {
-                        continue;
-                    }
-                    else
+                    if (!skipCommentToken)
                     {
                         yield return commentToken;
                     }
+                    continue;
                 }
 
                 switch (current)
@@ -158,8 +155,7 @@ namespace CircuitSimulator.Core
         {
             int startColumn = _column;
             int start = _position;
-            // skip "//"
-            _position += 2;
+            _position += 2; // skip //
             _column += 2;
 
             while (_position < _input.Length && _input[_position] != '\n')
