@@ -1,4 +1,4 @@
-circuit DFF {
+circuit DflipFlop {
     inputs { d, clk }
     outputs { q }
     gates {

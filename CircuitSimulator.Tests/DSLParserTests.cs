@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Xunit;
+using CircuitSimulator.Core;
 
 namespace CircuitSimulator.Tests
 {

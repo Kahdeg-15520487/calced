@@ -293,7 +293,248 @@ namespace CircuitSimulator
             Console.WriteLine(JsonSerializer.Serialize(semanticTokens));
         }
 
-        static void RunSimulationMode(string dslFile, string basePath, string[] args)
+        static void DisplayState(Circuit circuit, int tick, Dictionary<string, string> previousInputBinaries, Dictionary<string, string> previousOutputBinaries)
+        {
+            Console.WriteLine($"Current State (Tick: {tick}):");
+            Console.WriteLine("Inputs:");
+
+            // Group inputs by base name for multi-bit display
+            var inputGroups = new Dictionary<string, List<(int index, bool value)>>();
+            foreach (var kvp in circuit.ExternalInputs)
+            {
+                var key = kvp.Key;
+                var inputValue = kvp.Value;
+
+                // Check if it's an array input like "a[0]"
+                var bracketIndex = key.IndexOf('[');
+                if (bracketIndex > 0 && key.EndsWith(']'))
+                {
+                    var baseName = key.Substring(0, bracketIndex);
+                    var indexStr = key.Substring(bracketIndex + 1, key.Length - bracketIndex - 2);
+                    if (int.TryParse(indexStr, out var index))
+                    {
+                        if (!inputGroups.ContainsKey(baseName))
+                        {
+                            inputGroups[baseName] = new List<(int, bool)>();
+                        }
+                        inputGroups[baseName].Add((index, inputValue));
+                    }
+                    else
+                    {
+                        // Fallback for malformed array names
+                        Console.WriteLine($"  {key}: {(inputValue ? 1 : 0)}");
+                    }
+                }
+                else
+                {
+                    // Single-bit input
+                    var valueStr = (inputValue ? "1" : "0");
+                    var changed = previousInputBinaries.TryGetValue(key, out var prev) && prev != valueStr;
+                    if (changed)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                    }
+                    Console.WriteLine($"  {key}: {valueStr}");
+                    if (changed)
+                    {
+                        Console.ResetColor();
+                    }
+                    previousInputBinaries[key] = valueStr;
+                }
+            }
+
+            // Display grouped multi-bit inputs
+            foreach (var group in inputGroups)
+            {
+                var baseName = group.Key;
+                var bits = group.Value.OrderBy(x => x.index).Select(x => x.value).ToArray();
+
+                // Convert bits to binary string (MSB first)
+                var binaryStr = string.Join("", bits.Reverse().Select(b => b ? "1" : "0"));
+
+                // Check if changed
+                var changed = previousInputBinaries.TryGetValue(baseName, out var prev) && prev != binaryStr;
+                if (changed)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                }
+                Console.WriteLine($"  {baseName}: {binaryStr}");
+                if (changed)
+                {
+                    Console.ResetColor();
+                }
+
+                // Update previous
+                previousInputBinaries[baseName] = binaryStr;
+            }
+
+            Console.WriteLine("Outputs:");
+
+            // Group outputs by base name for multi-bit display
+            var outputGroups = new Dictionary<string, List<(int index, bool value)>>();
+            foreach (var kvp in circuit.ExternalOutputs)
+            {
+                var key = kvp.Key;
+                var gate = kvp.Value;
+                var outputValue = gate?.Output ?? false;
+
+                // Check if it's an array output like "sum[0]"
+                var bracketIndex = key.IndexOf('[');
+                if (bracketIndex > 0 && key.EndsWith(']'))
+                {
+                    var baseName = key.Substring(0, bracketIndex);
+                    var indexStr = key.Substring(bracketIndex + 1, key.Length - bracketIndex - 2);
+                    if (int.TryParse(indexStr, out var index))
+                    {
+                        if (!outputGroups.ContainsKey(baseName))
+                        {
+                            outputGroups[baseName] = new List<(int, bool)>();
+                        }
+                        outputGroups[baseName].Add((index, outputValue));
+                    }
+                    else
+                    {
+                        // Fallback for malformed array names
+                        Console.WriteLine($"  {key}: {(outputValue ? 1 : 0)}");
+                    }
+                }
+                else
+                {
+                    // Single-bit output
+                    var valueStr = (outputValue ? "1" : "0");
+                    var changed = previousOutputBinaries.TryGetValue(key, out var prev) && prev != valueStr;
+                    if (changed)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                    }
+                    Console.WriteLine($"  {key}: {valueStr}");
+                    if (changed)
+                    {
+                        Console.ResetColor();
+                    }
+                    previousOutputBinaries[key] = valueStr;
+                }
+            }
+
+            // Display grouped multi-bit outputs
+            foreach (var group in outputGroups)
+            {
+                var baseName = group.Key;
+                var bits = group.Value.OrderBy(x => x.index).Select(x => x.value).ToArray();
+
+                // Convert bits to binary string (MSB first)
+                var binaryStr = string.Join("", bits.Reverse().Select(b => b ? "1" : "0"));
+
+                // Check if changed
+                var changed = previousOutputBinaries.TryGetValue(baseName, out var prev) && prev != binaryStr;
+                if (changed)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                }
+                Console.WriteLine($"  {baseName}: {binaryStr}");
+                if (changed)
+                {
+                    Console.ResetColor();
+                }
+
+                // Update previous
+                previousOutputBinaries[baseName] = binaryStr;
+            }
+        }
+
+        static Dictionary<string, string> ParseInteractiveInputs(string inputLine)
+        {
+            var changes = new Dictionary<string, string>();
+            var parts = inputLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var part in parts)
+            {
+                var kvp = part.Split('=');
+                if (kvp.Length == 2)
+                {
+                    changes[kvp[0]] = kvp[1];
+                }
+                else
+                {
+                    changes[kvp[0]] = "";
+                }
+            }
+            return changes;
+        }
+
+        static void ApplyInputChanges(Circuit circuit, Dictionary<string, string> changes)
+        {
+            foreach (var change in changes)
+            {
+                var inputName = change.Key;
+                var valueStr = change.Value;
+
+                if (string.IsNullOrEmpty(valueStr))
+                {
+                    // toggle the input if no value provided
+                    // Check for single-bit input
+                    if (circuit.ExternalInputs.ContainsKey(inputName))
+                    {
+                        circuit.ExternalInputs[inputName] = !circuit.ExternalInputs[inputName];
+                    }
+                    else
+                    {
+                        // Check for multi-bit input (e.g., toggle all bits of "a" if "a[0]", "a[1]" exist)
+                        var multiBitKeys = circuit.ExternalInputs.Keys.Where(k => k.StartsWith(inputName + "[") && k.EndsWith("]")).ToList();
+                        if (multiBitKeys.Count > 0)
+                        {
+                            foreach (var key in multiBitKeys)
+                            {
+                                circuit.ExternalInputs[key] = !circuit.ExternalInputs[key];
+                            }
+                        }
+                        else
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine($"Unknown input: {inputName}");
+                            Console.ResetColor();
+                        }
+                    }
+                }
+                else if (bool.TryParse(valueStr, out var boolValue))
+                {
+                    // Single boolean input
+                    if (circuit.ExternalInputs.ContainsKey(inputName))
+                    {
+                        circuit.ExternalInputs[inputName] = boolValue;
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"Unknown input: {inputName}");
+                        Console.ResetColor();
+                    }
+                }
+                else
+                {
+                    // Try to parse as multi-bit value
+                    try
+                    {
+                        var bits = ParseMultiBitValue(valueStr);
+                        if (bits.Length == 1 && circuit.ExternalInputs.ContainsKey(inputName))
+                        {
+                            circuit.ExternalInputs[inputName] = bits[0];
+                        }
+                        else
+                        {
+                            SetMultiBitInput(circuit, inputName, bits);
+                        }
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"Invalid value for {inputName}: {valueStr} ({ex.Message})");
+                        Console.ResetColor();
+                    }
+                }
+            }
+        }
+
+        static void RunSimulationMode(string dslFile, string basePath, string[] args, bool isInteractive)
         {
             var dsl = File.ReadAllText(dslFile);
 
@@ -355,7 +596,7 @@ namespace CircuitSimulator
                 if (arg.StartsWith("--"))
                 {
                     // Skip known flags
-                    if (arg == "--verify" || arg.StartsWith("--base-path=") || arg.StartsWith("--synthesize=") || arg.StartsWith("--out="))
+                    if (arg == "--verify" || arg == "--interactive" || arg.StartsWith("--base-path=") || arg.StartsWith("--synthesize=") || arg.StartsWith("--out="))
                     {
                         continue;
                     }
@@ -374,7 +615,9 @@ namespace CircuitSimulator
                             }
                             else
                             {
+                                Console.ForegroundColor = ConsoleColor.Red;
                                 Console.WriteLine($"Invalid ticks value: {valueStr}. Must be a positive integer.");
+                                Console.ResetColor();
                                 return;
                             }
                         }
@@ -391,7 +634,9 @@ namespace CircuitSimulator
                                 }
                                 else
                                 {
+                                    Console.ForegroundColor = ConsoleColor.Red;
                                     Console.WriteLine($"Unknown input: {inputName}");
+                                    Console.ResetColor();
                                 }
                             }
                             else
@@ -411,7 +656,9 @@ namespace CircuitSimulator
                                 }
                                 catch (ArgumentException ex)
                                 {
+                                    Console.ForegroundColor = ConsoleColor.Red;
                                     Console.WriteLine($"Invalid value for {inputName}: {valueStr} ({ex.Message})");
+                                    Console.ResetColor();
                                 }
                             }
                         }
@@ -419,144 +666,97 @@ namespace CircuitSimulator
                 }
             }
 
-            // Simulate for specified number of ticks and collect state history
-            var stateHistory = new List<(int Tick, Dictionary<string, bool> Inputs, Dictionary<string, bool> Outputs)>();
+            var previousInputBinaries = new Dictionary<string, string>();
+            var previousOutputBinaries = new Dictionary<string, string>();
 
-            // Record initial state (before any ticks)
-            var initialOutputs = new Dictionary<string, bool>();
-            foreach (var kvp in circuit.ExternalOutputs)
+            if (isInteractive)
             {
-                var gate = kvp.Value;
-                initialOutputs[kvp.Key] = gate?.Output ?? false;
-            }
-            stateHistory.Add((0, new Dictionary<string, bool>(circuit.ExternalInputs), initialOutputs));
-
-            // Simulate and record state after each tick
-            for (int i = 0; i < ticks; i++)
-            {
-                circuit.Tick();
-            }
-
-            // Output results
-            Console.WriteLine($"Simulation Results (after {ticks} ticks):");
-            Console.WriteLine("Inputs:");
-
-            // Group inputs by base name for multi-bit display
-            var inputGroups = new Dictionary<string, List<(int index, bool value)>>();
-            foreach (var kvp in circuit.ExternalInputs)
-            {
-                var key = kvp.Key;
-                var inputValue = kvp.Value;
-
-                // Check if it's an array input like "a[0]"
-                var bracketIndex = key.IndexOf('[');
-                if (bracketIndex > 0 && key.EndsWith(']'))
+                Console.WriteLine("'a=true b=false' to set inputs, 'a' 'b' to toggle inputs, 'tick' or '.' to simulate, 'exit' to exit): ");
+                // Interactive mode
+                int currentTick = 0;
+                DisplayState(circuit, currentTick, previousInputBinaries, previousOutputBinaries);
+                while (true)
                 {
-                    var baseName = key.Substring(0, bracketIndex);
-                    var indexStr = key.Substring(bracketIndex + 1, key.Length - bracketIndex - 2);
-                    if (int.TryParse(indexStr, out var index))
+                    Console.Write("> ");
+                    var command = Console.ReadLine()?.Trim();
+                    if (string.IsNullOrEmpty(command))
                     {
-                        if (!inputGroups.ContainsKey(baseName))
+                        continue;
+                    }
+                    if (command.StartsWith("."))
+                    {
+                        command = command.TrimStart('.');
+                        switch (command)
                         {
-                            inputGroups[baseName] = new List<(int, bool)>();
+                            case "exit":
+                                return;
+                            case "tick":
+                            case "":
+                                currentTick++;
+                                circuit.Tick();
+                                DisplayState(circuit, currentTick, previousInputBinaries, previousOutputBinaries);
+                                break;
+                            default:
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine("Invalid command. Use 'input=value' to set inputs, 'input' to toggle inputs, 'tick' or '.' to simulate, or 'exit' to exit.");
+                                Console.ResetColor();
+                                break;
                         }
-                        inputGroups[baseName].Add((index, inputValue));
                     }
                     else
                     {
-                        // Fallback for malformed array names
-                        Console.WriteLine($"  {key}: {(inputValue ? 1 : 0)}");
-                    }
-                }
-                else
-                {
-                    // Single-bit input
-                    Console.WriteLine($"  {key}: {(inputValue ? 1 : 0)}");
-                }
-            }
-
-            // Display grouped multi-bit inputs
-            foreach (var group in inputGroups)
-            {
-                var baseName = group.Key;
-                var bits = group.Value.OrderBy(x => x.index).Select(x => x.value).ToArray();
-
-                // Convert bits to binary string (MSB first)
-                var binaryStr = string.Join("", bits.Reverse().Select(b => b ? "1" : "0"));
-
-                Console.WriteLine($"  {baseName}: {binaryStr}");
-            }
-
-            Console.WriteLine("Outputs:");
-
-            // Group outputs by base name for multi-bit display
-            var outputGroups = new Dictionary<string, List<(int index, bool value)>>();
-            foreach (var kvp in circuit.ExternalOutputs)
-            {
-                var key = kvp.Key;
-                var gate = kvp.Value;
-                var outputValue = gate?.Output ?? false;
-
-                // Check if it's an array output like "sum[0]"
-                var bracketIndex = key.IndexOf('[');
-                if (bracketIndex > 0 && key.EndsWith(']'))
-                {
-                    var baseName = key.Substring(0, bracketIndex);
-                    var indexStr = key.Substring(bracketIndex + 1, key.Length - bracketIndex - 2);
-                    if (int.TryParse(indexStr, out var index))
-                    {
-                        if (!outputGroups.ContainsKey(baseName))
+                        var changes = ParseInteractiveInputs(command);
+                        if (changes.Count > 0)
                         {
-                            outputGroups[baseName] = new List<(int, bool)>();
+                            ApplyInputChanges(circuit, changes);
+                            DisplayState(circuit, currentTick, previousInputBinaries, previousOutputBinaries);
                         }
-                        outputGroups[baseName].Add((index, outputValue));
+                        else
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine("Unable to parse inputs.");
+                            Console.ResetColor();
+                        }
                     }
-                    else
-                    {
-                        // Fallback for malformed array names
-                        Console.WriteLine($"  {key}: {(outputValue ? 1 : 0)}");
-                    }
-                }
-                else
-                {
-                    // Single-bit output
-                    Console.WriteLine($"  {key}: {(outputValue ? 1 : 0)}");
                 }
             }
-
-            // Display grouped multi-bit outputs
-            foreach (var group in outputGroups)
+            else
             {
-                var baseName = group.Key;
-                var bits = group.Value.OrderBy(x => x.index).Select(x => x.value).ToArray();
+                // Batch mode
+                // Simulate for specified number of ticks and collect state history
+                var stateHistory = new List<(int Tick, Dictionary<string, bool> Inputs, Dictionary<string, bool> Outputs)>();
 
-                // Convert bits to binary string (MSB first)
-                var binaryStr = string.Join("", bits.Reverse().Select(b => b ? "1" : "0"));
-
-                // Convert to decimal for display
-                var decimalValue = 0;
-                for (int i = 0; i < bits.Length; i++)
+                // Record initial state (before any ticks)
+                var initialOutputs = new Dictionary<string, bool>();
+                foreach (var kvp in circuit.ExternalOutputs)
                 {
-                    if (bits[i])
-                    {
-                        decimalValue |= (1 << i);
-                    }
+                    var gate = kvp.Value;
+                    initialOutputs[kvp.Key] = gate?.Output ?? false;
+                }
+                stateHistory.Add((0, new Dictionary<string, bool>(circuit.ExternalInputs), initialOutputs));
+
+                // Simulate and record state after each tick
+                for (int j = 0; j < ticks; j++)
+                {
+                    circuit.Tick();
                 }
 
-                Console.WriteLine($"  {baseName}: {binaryStr}");
+                // Output results
+                Console.WriteLine($"Simulation Results (after {ticks} ticks):");
+                DisplayState(circuit, ticks, new Dictionary<string, string>(), new Dictionary<string, string>());
             }
         }
-
         static void Main(string[] args)
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("Usage: CircuitSimulator <dsl-file> [--<input>=<value>]... [--ticks=N] [--verify] [--info] [--tokens]");
+                Console.WriteLine("Usage: CircuitSimulator <dsl-file> [--<input>=<value>]... [--ticks=N] [--interactive]");
                 Console.WriteLine("       CircuitSimulator --synthesize=\"expression\" [--out=<file>]");
                 Console.WriteLine("       CircuitSimulator --tokens [<dsl-file>]  # Read from stdin if no file");
                 Console.WriteLine("Examples:");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --ticks=10");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --b=false --ticks=5");
+                Console.WriteLine("  CircuitSimulator circuit.circuit --interactive  # Interactive mode for changing inputs");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --verify  # For LSP validation");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --info    # For LSP hover info");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --tokens  # Output semantic tokens for file");
@@ -570,10 +770,11 @@ namespace CircuitSimulator
             var isInfoMode = args.Contains("--info");
             var isSynthesizeMode = false;
             var isTokensMode = args.Contains("--tokens");
+            var isInteractiveMode = args.Contains("--interactive");
             string? synthesizeExpression = null;
             string? outFile = null;
 
-            var dslFile = args.Length > 0 && !args[0].StartsWith("--") ? args[0] : 
+            var dslFile = args.Length > 0 && !args[0].StartsWith("--") ? args[0] :
                           (isTokensMode && args.Length > 1 ? args[1] : null);
 
             // Parse arguments
@@ -638,7 +839,7 @@ namespace CircuitSimulator
             }
 
             // Normal simulation mode
-            RunSimulationMode(dslFile, basePath, args);
+            RunSimulationMode(dslFile, basePath, args, isInteractiveMode);
         }
     }
 }
