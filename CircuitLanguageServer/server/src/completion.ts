@@ -2,6 +2,33 @@ import { CompletionItem, CompletionItemKind, TextDocumentPositionParams } from '
 
 import { connection, documents } from './connection';
 
+// Helper function to get gate type from gate name
+function getGateType(text: string, gateName: string): string {
+    // Simple regex to find gate definition like "gateName = GATE_TYPE()"
+    const gateRegex = new RegExp(`\\b${gateName}\\s*=\\s*(\\w+)\\s*\\(`, 'g');
+    const match = gateRegex.exec(text);
+    return match ? match[1] : '';
+}
+
+// Helper function to get ports for a gate type
+function getPortsForGate(gateType: string): string[] {
+    switch (gateType.toUpperCase()) {
+        case 'NOT':
+            return ['in[0]', 'out'];
+        case 'AND':
+        case 'OR':
+        case 'NAND':
+        case 'NOR':
+        case 'XOR':
+        case 'XNOR':
+            return ['in[0]', 'in[1]', 'out'];
+        case 'DFF':
+            return ['d', 'clk', 'out'];
+        default:
+            return ['in[0]', 'in[1]', 'out']; // Default for unknown gates
+    }
+}
+
 export function initializeCompletionHandlers(): void {
 	// This handler provides context-aware completion items.
 	connection.onCompletion(
@@ -132,26 +159,59 @@ export function initializeCompletionHandlers(): void {
 
 			// Add common patterns
 			if (lineUpToCursor.includes('.')) {
-				suggestions.push(
-					{
-						label: 'in[0]',
-						kind: CompletionItemKind.Property,
-						insertText: 'in[${1:0}]',
-						documentation: 'Gate input pin'
-					},
-					{
-						label: 'out',
-						kind: CompletionItemKind.Property,
-						insertText: 'out',
-						documentation: 'Gate output pin'
-					},
-					{
-						label: 'out[0]',
-						kind: CompletionItemKind.Property,
-						insertText: 'out[${1:0}]',
-						documentation: 'Indexed gate output pin'
+				// Check if it's gate.port completion
+				const dotIndex = lineUpToCursor.lastIndexOf('.');
+				const beforeDot = lineUpToCursor.substring(0, dotIndex).trim();
+				const gateName = beforeDot.split(/\s+/).pop();
+
+				if (gateName) {
+					// Simple gate type detection (can be enhanced with parsing)
+					const gateType = getGateType(text, gateName);
+					const ports = getPortsForGate(gateType);
+
+					ports.forEach((port: string) => {
+						suggestions.push({
+							label: port,
+							kind: CompletionItemKind.Property,
+							insertText: port,
+							documentation: `Port for ${gateType} gate`
+						});
+					});
+
+					// Fallback to generic suggestions if no specific ports
+					if (ports.length === 0) {
+						suggestions.push(
+							{
+								label: 'in[0]',
+								kind: CompletionItemKind.Property,
+								insertText: 'in[${1:0}]',
+								documentation: 'Gate input pin'
+							},
+							{
+								label: 'out',
+								kind: CompletionItemKind.Property,
+								insertText: 'out',
+								documentation: 'Gate output pin'
+							}
+						);
 					}
-				);
+				} else {
+					// Fallback for non-gate completions
+					suggestions.push(
+						{
+							label: 'in[0]',
+							kind: CompletionItemKind.Property,
+							insertText: 'in[${1:0}]',
+							documentation: 'Gate input pin'
+						},
+						{
+							label: 'out',
+							kind: CompletionItemKind.Property,
+							insertText: 'out',
+							documentation: 'Gate output pin'
+						}
+					);
+				}
 			}
 
 			return suggestions;

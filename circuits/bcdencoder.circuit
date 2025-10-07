@@ -1,0 +1,53 @@
+circuit bcdencoder{
+    inputs {
+        a[4]
+    }
+    outputs {
+        b[2]
+    }
+    gates{
+        or0 = OR()
+        or1 = OR()
+    }
+    connections{
+        a[1] -> or0.in[0]
+        a[3] -> or0.in[1]
+        or0.out -> b[0]
+        a[2] -> or1.in[0]
+        a[3] -> or1.in[1]
+        or1.out -> b[1]
+    }
+}
+
+circuit bcddecoder{
+    inputs {
+        b[2]
+    }
+    outputs {
+        a[4]
+    }
+    gates{
+        not0 = NOT()
+        not1 = NOT()
+        and0 = AND()
+        and1 = AND()
+        and2 = AND()
+        and3 = AND()
+    }
+    connections{
+        b[1] -> not0.in[0]
+        not0.out -> and0.in[0]
+        b[0] -> not1.in[0]
+        not1.out -> and0.in[1]
+        and0.out -> a[0]
+        not0.out -> and1.in[0]
+        b[0] -> and1.in[1]
+        and1.out -> a[1]
+        b[1] -> and2.in[0]
+        not1.out -> and2.in[1]
+        and2.out -> a[2]
+        b[1] -> and3.in[0]
+        b[0] -> and3.in[1]
+        and3.out -> a[3]
+    }
+}

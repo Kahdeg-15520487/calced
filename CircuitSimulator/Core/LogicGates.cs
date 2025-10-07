@@ -17,6 +17,7 @@ namespace CircuitSimulator.Core
     {
         public AndGate()
         {
+            Inputs = [false, false];
             Outputs = [false];
             Type = "AND";
         }
@@ -31,6 +32,7 @@ namespace CircuitSimulator.Core
     {
         public OrGate()
         {
+            Inputs = [false, false];
             Outputs = [false];
             Type = "OR";
         }
@@ -45,6 +47,7 @@ namespace CircuitSimulator.Core
     {
         public NotGate()
         {
+            Inputs = [false];
             Outputs = [false];
             Type = "NOT";
         }
@@ -60,6 +63,7 @@ namespace CircuitSimulator.Core
     {
         public NandGate()
         {
+            Inputs = [false, false];
             Outputs = [false];
             Type = "NAND";
         }
@@ -74,6 +78,7 @@ namespace CircuitSimulator.Core
     {
         public NorGate()
         {
+            Inputs = [false, false];
             Outputs = [false];
             Type = "NOR";
         }
@@ -88,6 +93,7 @@ namespace CircuitSimulator.Core
     {
         public XorGate()
         {
+            Inputs = [false, false];
             Outputs = [false];
             Type = "XOR";
         }
@@ -102,6 +108,7 @@ namespace CircuitSimulator.Core
     {
         public XnorGate()
         {
+            Inputs = [false, false];
             Outputs = [false];
             Type = "XNOR";
         }
@@ -118,6 +125,7 @@ namespace CircuitSimulator.Core
 
         public DFlipFlop()
         {
+            Inputs = [false, false];
             Outputs = [false];
             Type = "DFF";
         }
@@ -142,7 +150,8 @@ namespace CircuitSimulator.Core
         public CircuitGate(Circuit subCircuit)
         {
             SubCircuit = subCircuit;
-            // Initialize outputs list with the same size as subcircuit outputs
+            // Initialize inputs and outputs
+            Inputs = new List<bool>(new bool[subCircuit.ExternalInputs.Count]);
             Outputs = [.. new bool[subCircuit.ExternalOutputs.Count]];
             Type = "Circuit:" + subCircuit.Name;
         }
@@ -197,14 +206,17 @@ namespace CircuitSimulator.Core
         {
             LookupTable = lookupTable;
             Type = "LookupTable:" + tableName;
-            // Initialize outputs based on the first table entry
+            // Initialize inputs and outputs based on the table
             if (lookupTable.Count > 0)
             {
-                var firstOutput = lookupTable.Values.First();
+                var firstKey = lookupTable.Keys.First();
+                var firstOutput = lookupTable[firstKey];
+                Inputs = new List<bool>(new bool[firstKey.Length]);
                 Outputs = [.. firstOutput];
             }
             else
             {
+                Inputs = [];
                 Outputs = [false];
             }
         }

@@ -534,7 +534,7 @@ namespace CircuitSimulator
             }
         }
 
-        static void RunSimulationMode(string dslFile, string basePath, string[] args, bool isInteractive)
+        static void RunSimulationMode(string dslFile, string basePath, string[] args, bool isInteractive, string? circuitName)
         {
             var dsl = File.ReadAllText(dslFile);
 
@@ -545,7 +545,19 @@ namespace CircuitSimulator
                 var tokens = lexer.Tokenize().ToList();
                 var parser = new Parser(tokens, basePath, dslFile);
                 var circuits = parser.ParseCircuits();
-                circuit = circuits.LastOrDefault().Value;
+                if (circuitName != null && circuits.ContainsKey(circuitName))
+                {
+                    circuit = circuits[circuitName];
+                }
+                else if (circuitName != null)
+                {
+                    Console.Error.WriteLine($"Circuit '{circuitName}' not found in '{dslFile}'. Available circuits: {string.Join(", ", circuits.Keys)}");
+                    return;
+                }
+                else
+                {
+                    circuit = circuits.LastOrDefault().Value;
+                }
             }
             catch (DSLInvalidSyntaxException ex)
             {
@@ -596,7 +608,7 @@ namespace CircuitSimulator
                 if (arg.StartsWith("--"))
                 {
                     // Skip known flags
-                    if (arg == "--verify" || arg == "--interactive" || arg.StartsWith("--base-path=") || arg.StartsWith("--synthesize=") || arg.StartsWith("--out="))
+                    if (arg == "--verify" || arg == "--interactive" || arg.StartsWith("--base-path=") || arg.StartsWith("--circuit=") || arg.StartsWith("--synthesize=") || arg.StartsWith("--out="))
                     {
                         continue;
                     }
@@ -750,12 +762,12 @@ namespace CircuitSimulator
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("Usage: CircuitSimulator <dsl-file> [--<input>=<value>]... [--ticks=N] [--interactive]");
+                Console.WriteLine("Usage: CircuitSimulator <dsl-file> [--circuit=<name>] [--<input>=<value>]... [--ticks=N] [--interactive]");
                 Console.WriteLine("       CircuitSimulator --synthesize=\"expression\" [--out=<file>]");
                 Console.WriteLine("       CircuitSimulator --tokens [<dsl-file>]  # Read from stdin if no file");
                 Console.WriteLine("Examples:");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --ticks=10");
-                Console.WriteLine("  CircuitSimulator circuit.circuit --a=true --b=false --ticks=5");
+                Console.WriteLine("  CircuitSimulator circuit.circuit --circuit=MyCircuit --a=true --b=false --ticks=5");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --interactive  # Interactive mode for changing inputs");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --verify  # For LSP validation");
                 Console.WriteLine("  CircuitSimulator circuit.circuit --info    # For LSP hover info");
@@ -773,6 +785,7 @@ namespace CircuitSimulator
             var isInteractiveMode = args.Contains("--interactive");
             string? synthesizeExpression = null;
             string? outFile = null;
+            string? circuitName = null;
 
             var dslFile = args.Length > 0 && !args[0].StartsWith("--") ? args[0] :
                           (isTokensMode && args.Length > 1 ? args[1] : null);
@@ -789,6 +802,10 @@ namespace CircuitSimulator
                 else if (args[i].StartsWith("--original-file-path="))
                 {
                     originalFilePath = args[i].Substring("--original-file-path=".Length);
+                }
+                else if (args[i].StartsWith("--circuit="))
+                {
+                    circuitName = args[i].Substring("--circuit=".Length);
                 }
                 else if (args[i].StartsWith("--synthesize="))
                 {
@@ -839,7 +856,7 @@ namespace CircuitSimulator
             }
 
             // Normal simulation mode
-            RunSimulationMode(dslFile, basePath, args, isInteractiveMode);
+            RunSimulationMode(dslFile, basePath, args, isInteractiveMode, circuitName);
         }
     }
 }
