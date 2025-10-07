@@ -430,6 +430,10 @@ namespace CircuitSimulator.Core
             {
                 sourceObj = source; // external input name
             }
+            else if (circuit.InputNames.Any(p => p.Name == source))
+            {
+                sourceObj = source; // multi-bit external input base name
+            }
             else if (source.Contains('.'))
             {
                 // gate.output format
@@ -577,21 +581,81 @@ namespace CircuitSimulator.Core
                         throw new DSLInvalidConnectionException($"{source} -> {target}", $"Target gate '{parts[0]}' not found");
                     }
                 }
+                else if (parts.Length == 2 && parts[1] == "in")
+                {
+                    // Multi-bit input
+                    if (circuit.NamedGates.TryGetValue(parts[0], out targetGate))
+                    {
+                        int targetBitWidth = targetGate.Inputs.Count;
+                        int sourceBitWidth = 0;
+
+                        // Check if source is multi-bit external input
+                        if (circuit.ExternalInputs.ContainsKey(source))
+                        {
+                            var inputInfo = circuit.InputNames.FirstOrDefault(p => p.Name == source);
+                            if (inputInfo != null)
+                            {
+                                sourceBitWidth = inputInfo.BitWidth;
+                            }
+                        }
+                        else if (circuit.InputNames.Any(p => p.Name == source))
+                        {
+                            var inputInfo = circuit.InputNames.First(p => p.Name == source);
+                            sourceBitWidth = inputInfo.BitWidth;
+                        }
+                        // Check if source is multi-bit gate output
+                        else if (source.Contains('.') && circuit.NamedGates.TryGetValue(source.Split('.')[0], out var sourceGate) && source.Split('.')[1] == "out")
+                        {
+                            sourceBitWidth = sourceGate.Outputs.Count;
+                        }
+
+                        if (sourceBitWidth > 1 && sourceBitWidth == targetBitWidth)
+                        {
+                            // Expand connections
+                            for (int i = 0; i < sourceBitWidth; i++)
+                            {
+                                string expandedSource = circuit.ExternalInputs.ContainsKey(source) ? $"{source}[{i}]" : $"{source}[{i}]";
+                                string expandedTarget = $"{parts[0]}.in[{i}]";
+                                ParseConnection(circuit, expandedSource, expandedTarget, targetLine, targetColumn);
+                            }
+                            return;
+                        }
+                        else if (sourceBitWidth != targetBitWidth)
+                        {
+                            throw new DSLInvalidConnectionException($"{source} -> {target}", $"Bitwidth mismatch: {sourceBitWidth} vs {targetBitWidth}");
+                        }
+                        else
+                        {
+                            throw new DSLInvalidConnectionException($"{source} -> {target}", $"Multi-bit connection requires matching bitwidths > 1");
+                        }
+                    }
+                    else
+                    {
+                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Target gate '{parts[0]}' not found");
+                    }
+                }
                 else
                 {
                     throw new DSLInvalidConnectionException($"{source} -> {target}", $"Invalid target format: {target}");
                 }
             }
-            else if (circuit.ExternalOutputs.ContainsKey(target))
+            else if (circuit.OutputNames.Any(p => p.Name == target && p.BitWidth > 1))
             {
-                // Connecting to external output
-                if (sourceObj is Gate sourceGate)
+                var outputInfo = circuit.OutputNames.First(p => p.Name == target);
+                if (sourceObj is Gate sourceGate && sourceGate.Outputs.Count == outputInfo.BitWidth)
                 {
-                    circuit.ExternalOutputs[target] = sourceGate;
+                    // Expand connections
+                    for (int i = 0; i < outputInfo.BitWidth; i++)
+                    {
+                        string expandedSource = source.Contains('.') ? $"{source.Split('.')[0]}.out[{i}]" : $"{source}[{i}]";
+                        string expandedTarget = $"{target}[{i}]";
+                        ParseConnection(circuit, expandedSource, expandedTarget, targetLine, targetColumn);
+                    }
+                    return;
                 }
                 else
                 {
-                    throw new DSLInvalidConnectionException($"{source} -> {target}", "Cannot connect external input directly to external output");
+                    throw new DSLInvalidConnectionException($"{source} -> {target}", "Source must be a gate with matching output bitwidth");
                 }
             }
             else
@@ -684,7 +748,7 @@ namespace CircuitSimulator.Core
                 }
                 else
                 {
-                    throw new DSLInvalidSyntaxException(Peek().Line, Peek().Column, "Expected '[' or '.' after 'in' in target");
+                    target += ".in";
                 }
             }
 

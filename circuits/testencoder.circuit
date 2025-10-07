@@ -23,6 +23,7 @@ circuit bcdencoder{
         bcd = LookupTable("bcd")
     }
     connections{
-        a -> bcd.in
+        a -> bcd.in,
+        bcd.out -> b
     }
 }
