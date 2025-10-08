@@ -570,6 +570,13 @@ namespace CircuitSimulator.Core
                                 throw new DSLInvalidConnectionException($"{source} -> {target}", $"Input name '{inputName}' not found in subcircuit '{parts[0]}'");
                             }
                             
+                            // Calculate flat start index for this input
+                            int flatStart = 0;
+                            for (int j = 0; j < targetInputIndex; j++)
+                            {
+                                flatStart += cg.InputBitWidths[j];
+                            }
+                            
                             // Check if this is a multi-bit connection that needs expansion
                             int targetBitWidth = cg.InputBitWidths[targetInputIndex];
                             int sourceBitWidth = 0;
@@ -601,14 +608,14 @@ namespace CircuitSimulator.Core
                                 {
                                     string expandedSource = circuit.ExternalInputs.ContainsKey($"{source}[{i}]") ? $"{source}[{i}]" : 
                                                            (circuit.InputNames.Any(p => p.Name == source) ? $"{source}[{i}]" : $"{source}[{i}]");
-                                    string expandedTarget = $"{parts[0]}.in[{targetInputIndex + i}]";
+                                    string expandedTarget = $"{parts[0]}.in[{flatStart + i}]";
                                     ParseConnection(circuit, expandedSource, expandedTarget, targetLine, targetColumn);
                                 }
                                 return;
                             }
                             else
                             {
-                                circuit.Connect(sourceObj, targetGate, targetInputIndex);
+                                circuit.Connect(sourceObj, targetGate, flatStart);
                             }
                         }
                         else

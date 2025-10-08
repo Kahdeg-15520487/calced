@@ -48,16 +48,25 @@ namespace CircuitSimulator
 
         static void SetMultiBitInput(Circuit circuit, string inputName, bool[] bits)
         {
-            for (int i = 0; i < bits.Length; i++)
+            if (bits.Length == 1 && circuit.ExternalInputs.ContainsKey(inputName))
             {
-                var bitInputName = $"{inputName}[{i}]";
-                if (circuit.ExternalInputs.ContainsKey(bitInputName))
+                // Single-bit input
+                circuit.ExternalInputs[inputName] = bits[0];
+            }
+            else
+            {
+                // Multi-bit input
+                for (int i = 0; i < bits.Length; i++)
                 {
-                    circuit.ExternalInputs[bitInputName] = bits[i];
-                }
-                else
-                {
-                    throw new ArgumentException($"Input {bitInputName} not found in circuit");
+                    var bitInputName = $"{inputName}[{i}]";
+                    if (circuit.ExternalInputs.ContainsKey(bitInputName))
+                    {
+                        circuit.ExternalInputs[bitInputName] = bits[i];
+                    }
+                    else
+                    {
+                        throw new ArgumentException($"Input {bitInputName} not found in circuit");
+                    }
                 }
             }
         }

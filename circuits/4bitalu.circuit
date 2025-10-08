@@ -1,7 +1,7 @@
 import "4bitadder"
 
 circuit FourBitALU{
-    inputs { a[4], b[4], opcode, carry }
+    inputs { a[4], b[4], opcode[2], carry }
     outputs { y[4], status[5] }
     gates{
         adder = Circuit("FourBitAdder")
