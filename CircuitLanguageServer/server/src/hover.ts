@@ -150,13 +150,17 @@ export function initializeHoverHandler(): void {
 											}
 										}
 									} else if (isLookupTable) {
-										// Lookup table - no block info available
-										return {
-											contents: {
-												kind: MarkupKind.Markdown,
-												value: `**Block:** ${connectionRef.direction === 'in' ? 'input' : 'output'} of lookup table: ${connectionRef.gateName!}`
-											}
-										};
+										// Lookup table
+										// Get lookup table info
+										const refTableInfo = findLookupTableInfo(connectionRef.gateName!, circuitInfos!);
+										if (refTableInfo) {
+											return {
+												contents: {
+													kind: MarkupKind.Markdown,
+													value: `**Block:** ${connectionRef.direction === 'in' ? 'input' : 'output'} of lookup table: ${connectionRef.gateName!}\n\nBit Width: ${connectionRef.direction === 'in' ? refTableInfo.InputWidth : refTableInfo.OutputWidth}`
+												}
+											};
+										}
 									}
 								}
 								break;

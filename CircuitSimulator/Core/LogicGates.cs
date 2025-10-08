@@ -223,8 +223,8 @@ namespace CircuitSimulator.Core
 
         public override void Compute()
         {
-            // Convert inputs to binary string key
-            string key = string.Join("", Inputs.Select(i => i ? "1" : "0"));
+            // Convert inputs to binary string key (MSB first)
+            string key = string.Join("", Inputs.AsEnumerable().Reverse().Select(i => i ? "1" : "0"));
 
             // Look up the output values
             if (LookupTable.TryGetValue(key, out bool[]? output))

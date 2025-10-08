@@ -158,7 +158,7 @@ namespace CircuitSimulator.Core
             }
 
             // For sequential circuits, only update external outputs on rising clock edge
-            if (!clockRising)
+            if (currentClock && !clockRising)
             {
                 foreach (var kv in PreviousExternalOutputs)
                 {

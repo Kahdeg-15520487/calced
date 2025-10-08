@@ -1,0 +1,3 @@
+circuit testbcd{
+    inputs { ${1:input_name} }
+}

@@ -515,13 +515,25 @@ namespace CircuitSimulator
                     try
                     {
                         var bits = ParseMultiBitValue(valueStr);
-                        if (bits.Length == 1 && circuit.ExternalInputs.ContainsKey(inputName))
+                        
+                        // Check if it's a known input port
+                        var portInfo = circuit.InputNames.FirstOrDefault(p => p.Name == inputName);
+                        if (portInfo != null)
                         {
+                            if (bits.Length != portInfo.BitWidth)
+                            {
+                                throw new ArgumentException($"Supplied input bitwidth ({bits.Length}) does not match circuit input bitwidth ({portInfo.BitWidth})");
+                            }
+                            SetMultiBitInput(circuit, inputName, bits);
+                        }
+                        else if (bits.Length == 1 && circuit.ExternalInputs.ContainsKey(inputName))
+                        {
+                            // Fallback for single-bit inputs not in InputNames
                             circuit.ExternalInputs[inputName] = bits[0];
                         }
                         else
                         {
-                            SetMultiBitInput(circuit, inputName, bits);
+                            throw new ArgumentException($"Unknown input: {inputName}");
                         }
                     }
                     catch (ArgumentException ex)
@@ -657,13 +669,25 @@ namespace CircuitSimulator
                                 try
                                 {
                                     var bits = ParseMultiBitValue(valueStr);
-                                    if (bits.Length == 1 && circuit.ExternalInputs.ContainsKey(inputName))
+                                    
+                                    // Check if it's a known input port
+                                    var portInfo = circuit.InputNames.FirstOrDefault(p => p.Name == inputName);
+                                    if (portInfo != null)
                                     {
+                                        if (bits.Length != portInfo.BitWidth)
+                                        {
+                                            throw new ArgumentException($"Supplied input bitwidth ({bits.Length}) does not match circuit input bitwidth ({portInfo.BitWidth})");
+                                        }
+                                        SetMultiBitInput(circuit, inputName, bits);
+                                    }
+                                    else if (bits.Length == 1 && circuit.ExternalInputs.ContainsKey(inputName))
+                                    {
+                                        // Fallback for single-bit inputs not in InputNames
                                         circuit.ExternalInputs[inputName] = bits[0];
                                     }
                                     else
                                     {
-                                        SetMultiBitInput(circuit, inputName, bits);
+                                        throw new ArgumentException($"Unknown input: {inputName}");
                                     }
                                 }
                                 catch (ArgumentException ex)

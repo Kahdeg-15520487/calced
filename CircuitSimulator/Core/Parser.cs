@@ -357,12 +357,8 @@ namespace CircuitSimulator.Core
                     var output = new bool[outputStr.Length];
                     for (int i = 0; i < outputStr.Length; i++)
                     {
-                        if (outputStr[i] == '1')
-                            output[i] = true;
-                        else if (outputStr[i] == '0')
-                            output[i] = false;
-                        else
-                            throw new DSLInvalidSyntaxException(0, 0, $"Invalid output bit '{outputStr[i]}'. Expected '0' or '1'");
+                        // Treat output string as MSB first (leftmost digit is highest bit)
+                        output[i] = (outputStr[outputStr.Length - 1 - i] == '1');
                     }
 
                     table[input] = output;
@@ -656,6 +652,17 @@ namespace CircuitSimulator.Core
                 else
                 {
                     throw new DSLInvalidConnectionException($"{source} -> {target}", "Source must be a gate with matching output bitwidth");
+                }
+            }
+            else if (circuit.ExternalOutputs.ContainsKey(target))
+            {
+                if (sourceObj is Gate sourceGate)
+                {
+                    circuit.ExternalOutputs[target] = sourceGate;
+                }
+                else
+                {
+                    throw new DSLInvalidConnectionException($"{source} -> {target}", "External outputs must be connected to gate outputs");
                 }
             }
             else
