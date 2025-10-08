@@ -12,6 +12,8 @@ import {
 
 let client: LanguageClient;
 
+let extensionContext: ExtensionContext;
+
 const builtinDocs: Record<string, string> = {};
 
 function loadBuiltinDocs(context: ExtensionContext) {
@@ -31,7 +33,115 @@ function loadBuiltinDocs(context: ExtensionContext) {
 	}
 }
 
+async function runCircuit() {
+	const activeEditor = vscode.window.activeTextEditor;
+	if (!activeEditor || activeEditor.document.languageId !== 'circuit') {
+		vscode.window.showErrorMessage('Please open a circuit file to run.');
+		return;
+	}
+
+	const circuitFile = activeEditor.document.uri.fsPath;
+	const circuitDir = path.dirname(circuitFile);
+	const simulatorPath = path.join(extensionContext.extensionPath, 'bin', 'CircuitSimulator.exe');
+
+	// Get circuit info
+	const infoResult = await runSimulatorCommand(simulatorPath, [circuitFile, '--info'], circuitDir);
+	if (!infoResult.success) {
+		vscode.window.showErrorMessage(`Failed to get circuit info: ${infoResult.error}`);
+		return;
+	}
+
+	let circuitInfo;
+	try {
+		const circuits = JSON.parse(infoResult.output);
+		circuitInfo = circuits[circuits.length - 1]; // Take the last (main) circuit
+	} catch (e) {
+		vscode.window.showErrorMessage('Failed to parse circuit info.');
+		return;
+	}
+
+	// Collect inputs from user
+	const inputs: string[] = [];
+	for (const input of circuitInfo.Inputs) {
+		const value = await vscode.window.showInputBox({
+			prompt: `Enter value for input '${input.Name}' (${input.BitWidth} bit${input.BitWidth > 1 ? 's' : ''})`,
+			placeHolder: 'Leave empty to use default, or enter value (e.g., 5, b101, hFF)',
+			validateInput: (value) => {
+				if (!value) return null; // Empty is allowed
+				// Basic validation - could be improved
+				return null;
+			}
+		});
+
+		if (value !== undefined) { // User didn't cancel
+			if (value) {
+				inputs.push(`--${input.Name}=${value}`);
+			}
+		} else {
+			return; // User cancelled
+		}
+	}
+
+	// Run simulation
+	const simArgs = [circuitFile, '--ticks=1'].concat(inputs);
+	const simResult = await runSimulatorCommand(simulatorPath, simArgs, circuitDir);
+	
+	if (simResult.success) {
+		// Show results in output channel
+		const outputChannel = vscode.window.createOutputChannel('Circuit Simulation');
+		outputChannel.clear();
+		outputChannel.appendLine(`Running circuit: ${path.basename(circuitFile)}`);
+		outputChannel.appendLine('Inputs:');
+		for (const input of circuitInfo.Inputs) {
+			const inputArg = inputs.find(arg => arg.startsWith(`--${input.Name}=`));
+			const value = inputArg ? inputArg.split('=')[1] : 'default';
+			outputChannel.appendLine(`  ${input.Name}: ${value}`);
+		}
+		outputChannel.appendLine('');
+		outputChannel.appendLine('Results:');
+		outputChannel.appendLine(simResult.output);
+		outputChannel.show();
+	} else {
+		vscode.window.showErrorMessage(`Simulation failed: ${simResult.error}`);
+	}
+}
+
+async function runSimulatorCommand(simulatorPath: string, args: string[], cwd: string): Promise<{success: boolean, output: string, error: string}> {
+	return new Promise((resolve) => {
+		const { spawn } = require('child_process');
+		const child = spawn(simulatorPath, args, { cwd });
+
+		let stdout = '';
+		let stderr = '';
+
+		child.stdout.on('data', (data: Buffer) => {
+			stdout += data.toString();
+		});
+
+		child.stderr.on('data', (data: Buffer) => {
+			stderr += data.toString();
+		});
+
+		child.on('close', (code: number) => {
+			resolve({
+				success: code === 0,
+				output: stdout,
+				error: stderr
+			});
+		});
+
+		child.on('error', (err: Error) => {
+			resolve({
+				success: false,
+				output: stdout,
+				error: err.message
+			});
+		});
+	});
+}
+
 export function activate(context: ExtensionContext) {
+	extensionContext = context;
 	loadBuiltinDocs(context);
 
 	const provider = {
@@ -42,6 +152,11 @@ export function activate(context: ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.workspace.registerTextDocumentContentProvider('circuit-builtin', provider)
+	);
+
+	// Register the run circuit command
+	context.subscriptions.push(
+		vscode.commands.registerCommand('circuit.run', runCircuit)
 	);
 
 	// The server is implemented in node

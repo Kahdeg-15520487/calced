@@ -145,6 +145,7 @@ namespace CircuitSimulator.Core
         private Circuit SubCircuit { get; }
 
         public List<string> InputNames => SubCircuit.InputNames.Select(p => p.Name).ToList();
+        public List<int> InputBitWidths => SubCircuit.InputNames.Select(p => p.BitWidth).ToList();
         public List<string> OutputNames => SubCircuit.OutputNames.Select(p => p.Name).ToList();
         public List<int> OutputBitWidths => SubCircuit.OutputNames.Select(p => p.BitWidth).ToList();
 

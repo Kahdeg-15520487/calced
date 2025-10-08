@@ -18,6 +18,13 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "circuit.run",
+        "title": "Run Circuit",
+        "category": "Circuit"
+      }
+    ],
     "languages": [
       {
         "id": "circuit",

@@ -569,7 +569,47 @@ namespace CircuitSimulator.Core
                             {
                                 throw new DSLInvalidConnectionException($"{source} -> {target}", $"Input name '{inputName}' not found in subcircuit '{parts[0]}'");
                             }
-                            circuit.Connect(sourceObj, targetGate, targetInputIndex);
+                            
+                            // Check if this is a multi-bit connection that needs expansion
+                            int targetBitWidth = cg.InputBitWidths[targetInputIndex];
+                            int sourceBitWidth = 0;
+                            
+                            // Determine source bit width
+                            if (circuit.ExternalInputs.ContainsKey(source))
+                            {
+                                var inputInfo = circuit.InputNames.FirstOrDefault(p => p.Name == source);
+                                if (inputInfo != null)
+                                {
+                                    sourceBitWidth = inputInfo.BitWidth;
+                                }
+                            }
+                            else if (circuit.InputNames.Any(p => p.Name == source))
+                            {
+                                var inputInfo = circuit.InputNames.First(p => p.Name == source);
+                                sourceBitWidth = inputInfo.BitWidth;
+                            }
+                            // Check if source is multi-bit gate output
+                            else if (source.Contains('.') && circuit.NamedGates.TryGetValue(source.Split('.')[0], out var sourceGate) && source.Split('.')[1] == "out")
+                            {
+                                sourceBitWidth = sourceGate.Outputs.Count;
+                            }
+                            
+                            if (sourceBitWidth > 1 && sourceBitWidth == targetBitWidth)
+                            {
+                                // Expand multi-bit connection
+                                for (int i = 0; i < sourceBitWidth; i++)
+                                {
+                                    string expandedSource = circuit.ExternalInputs.ContainsKey($"{source}[{i}]") ? $"{source}[{i}]" : 
+                                                           (circuit.InputNames.Any(p => p.Name == source) ? $"{source}[{i}]" : $"{source}[{i}]");
+                                    string expandedTarget = $"{parts[0]}.in[{targetInputIndex + i}]";
+                                    ParseConnection(circuit, expandedSource, expandedTarget, targetLine, targetColumn);
+                                }
+                                return;
+                            }
+                            else
+                            {
+                                circuit.Connect(sourceObj, targetGate, targetInputIndex);
+                            }
                         }
                         else
                         {
