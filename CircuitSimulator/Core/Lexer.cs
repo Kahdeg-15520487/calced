@@ -15,7 +15,7 @@ namespace CircuitSimulator.Core
         IDENTIFIER, STRING, NUMBER,
 
         // Symbols
-        LBRACE, RBRACE, LBRACKET, RBRACKET, LPAREN, RPAREN, ARROW, COMMA, EQUALS, DOT,
+        LBRACE, RBRACE, LBRACKET, RBRACKET, LPAREN, RPAREN, ARROW, COMMA, EQUALS, DOT, RANGE,
 
         // Special
         EOF, COMMENT
@@ -100,7 +100,18 @@ namespace CircuitSimulator.Core
                     case ')': yield return ConsumeToken(TokenType.RPAREN, ")"); break;
                     case ',': yield return ConsumeToken(TokenType.COMMA, ","); break;
                     case '=': yield return ConsumeToken(TokenType.EQUALS, "="); break;
-                    case '.': yield return ConsumeToken(TokenType.DOT, "."); break;
+                    case '.':
+                        if (Peek() == '.')
+                        {
+                            _position += 2;
+                            _column += 2;
+                            yield return new Token(TokenType.RANGE, "..", _line, _column - 2);
+                        }
+                        else
+                        {
+                            yield return ConsumeToken(TokenType.DOT, ".");
+                        }
+                        break;
                     case '"': yield return ReadString(); break;
                     case '-':
                         if (Peek() == '>')

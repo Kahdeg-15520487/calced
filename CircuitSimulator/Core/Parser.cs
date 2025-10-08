@@ -727,13 +727,23 @@ namespace CircuitSimulator.Core
             Consume(TokenType.IDENTIFIER, "Expected source identifier");
             string source = Previous().Value;
 
-            // Handle array notation like value[0]
+            // Handle array notation like value[0] or value[1..2]
             if (Match(TokenType.LBRACKET))
             {
-                Consume(TokenType.NUMBER, "Expected array index");
-                string index = Previous().Value;
-                Consume(TokenType.RBRACKET, "Expected ']' after array index");
-                source += $"[{index}]";
+                Consume(TokenType.NUMBER, "Expected array index or range start");
+                string start = Previous().Value;
+                if (Match(TokenType.RANGE))
+                {
+                    Consume(TokenType.NUMBER, "Expected range end");
+                    string end = Previous().Value;
+                    Consume(TokenType.RBRACKET, "Expected ']' after range");
+                    source += $"[{start}..{end}]";
+                }
+                else
+                {
+                    Consume(TokenType.RBRACKET, "Expected ']' after array index");
+                    source += $"[{start}]";
+                }
             }
 
             if (Match(TokenType.DOT))
@@ -837,6 +847,7 @@ namespace CircuitSimulator.Core
                 case TokenType.COMMA: return ",";
                 case TokenType.EQUALS: return "=";
                 case TokenType.DOT: return ".";
+                case TokenType.RANGE: return "..";
                 case TokenType.IDENTIFIER: return "identifier";
                 case TokenType.STRING: return "string";
                 case TokenType.NUMBER: return "number";
