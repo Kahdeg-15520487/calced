@@ -146,6 +146,7 @@ namespace CircuitSimulator.Core
 
         public List<string> InputNames => SubCircuit.InputNames.Select(p => p.Name).ToList();
         public List<string> OutputNames => SubCircuit.OutputNames.Select(p => p.Name).ToList();
+        public List<int> OutputBitWidths => SubCircuit.OutputNames.Select(p => p.BitWidth).ToList();
 
         public CircuitGate(Circuit subCircuit)
         {
@@ -183,18 +184,32 @@ namespace CircuitSimulator.Core
     {
         private CircuitGate ParentCircuitGate { get; }
         private int OutputIndex { get; }
+        private int BitWidth { get; }
 
-        public SubcircuitOutputGate(CircuitGate parentCircuitGate, int outputIndex)
+        public SubcircuitOutputGate(CircuitGate parentCircuitGate, int outputIndex, int bitWidth = 1)
         {
             ParentCircuitGate = parentCircuitGate;
             OutputIndex = outputIndex;
-            Outputs = [false]; // Initialize with one output
+            BitWidth = bitWidth;
+            Outputs = new List<bool>(new bool[bitWidth]); // Initialize with the correct number of outputs
         }
 
         public override void Compute()
         {
             // This gate's output is the specific output from the parent subcircuit
-            Outputs = [(OutputIndex < ParentCircuitGate.Outputs.Count && ParentCircuitGate.Outputs[OutputIndex])];
+            if (BitWidth == 1)
+            {
+                Outputs = [(OutputIndex < ParentCircuitGate.Outputs.Count && ParentCircuitGate.Outputs[OutputIndex])];
+            }
+            else
+            {
+                // For multi-bit outputs, copy the range starting from OutputIndex
+                Outputs = new List<bool>(new bool[BitWidth]);
+                for (int i = 0; i < BitWidth && OutputIndex + i < ParentCircuitGate.Outputs.Count; i++)
+                {
+                    Outputs[i] = ParentCircuitGate.Outputs[OutputIndex + i];
+                }
+            }
         }
     }
 

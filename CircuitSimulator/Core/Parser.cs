@@ -47,14 +47,16 @@ namespace CircuitSimulator.Core
         private readonly string _basePath;
         private readonly string _filePath;
         private readonly string _originalFilePath;
+        private readonly int _level;
 
-        public Parser(List<Token> tokens, string basePath, string filePath, string? originalFilePath = null)
+        public Parser(List<Token> tokens, string basePath, string filePath, string? originalFilePath = null, int level = 0)
         {
             _tokens = tokens;
             _current = 0;
             _basePath = basePath;
             _filePath = filePath;
             _originalFilePath = originalFilePath ?? filePath;
+            _level = level;
         }
 
         public Dictionary<string, Circuit> ParseCircuits()
@@ -94,7 +96,7 @@ namespace CircuitSimulator.Core
 
                 var lexer = new Lexer(importedDsl);
                 var tokens = lexer.Tokenize().ToList();
-                var parser = new Parser(tokens, _basePath, importPath, importPath);
+                var parser = new Parser(tokens, _basePath, importPath, importPath, _level + 1);
                 var importedCircuits = parser.ParseCircuits();
 
                 foreach (var kvp in importedCircuits)
@@ -117,7 +119,8 @@ namespace CircuitSimulator.Core
             {
                 Name = circuitName,
                 FilePath = _originalFilePath,
-                DefinitionLine = definitionLine
+                DefinitionLine = definitionLine,
+                Level = _level
             };
 
             Consume(TokenType.LBRACE, "Expected '{' after circuit name");
@@ -502,7 +505,8 @@ namespace CircuitSimulator.Core
                         {
                             throw new DSLInvalidConnectionException($"{source} -> {target}", $"Output name '{outputName}' not found in subcircuit '{parts[0]}'");
                         }
-                        var outputGate = new SubcircuitOutputGate(cg, outputIndex);
+                        int bitWidth = cg.OutputBitWidths[outputIndex];
+                        var outputGate = new SubcircuitOutputGate(cg, outputIndex, bitWidth);
                         var outputGateName = $"{parts[0]}_out_{outputIndex}";
                         circuit.AddGate(outputGateName, outputGate);
                         sourceObj = outputGate;

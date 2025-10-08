@@ -139,6 +139,7 @@ namespace CircuitSimulator
                         Outputs = circuitEntry.Value.OutputNames,
                         FilePath = circuitEntry.Value.FilePath,
                         DefinitionLine = circuitEntry.Value.DefinitionLine,
+                        Level = circuitEntry.Value.Level,
                         Gates = circuitEntry.Value.NamedGates.Where(g => !string.IsNullOrEmpty(g.Value.Type)).ToDictionary(g => g.Key, g => new GateInfo { Type = g.Value.Type, DefinitionLine = g.Value.DefinitionLine, DefinitionColumn = g.Value.DefinitionColumn }),
                         LookupTables = circuitEntry.Value.LookupTables.ToDictionary(lut => lut.Key, lut =>
                         {

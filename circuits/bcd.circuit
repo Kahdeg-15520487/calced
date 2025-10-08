@@ -1,3 +1,17 @@
+import "bcddecoder"
+import "bcdencoder"
+
 circuit testbcd{
-    inputs { ${1:input_name} }
+    inputs { a[4] }
+    outputs { b[4] }
+    gates {
+        encoder = Circuit("bcdencoder")
+        decoder = Circuit("bcddecoder")
+    }
+
+    connections{
+        a -> decoder.in
+        decoder.out -> encoder.in
+        encoder.out -> b
+    }
 }

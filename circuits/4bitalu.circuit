@@ -1,0 +1,17 @@
+import "4bitadder"
+
+circuit FourBitALU{
+    inputs { a[4], b[4], opcode, carry }
+    outputs { y[4], status[5] }
+    gates{
+        adder = Circuit("FourBitAdder")
+        
+    }
+
+    connections{
+        a -> adder.in.a
+        b -> adder.in.b
+        carry -> adder.in.k
+        adder.out.sum -> y
+    }
+}

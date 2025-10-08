@@ -27,6 +27,9 @@ export function initializeHoverHandler(): void {
 			}
 
 			const word = text.substring(wordRange.start, wordRange.end);
+			const lines = text.split('\n');
+			const lineIndex = document.positionAt(offset).line;
+			const currentLine = lines[lineIndex];
 
 			// Provide hover information for different symbols
 			// Get circuit info for the current document
@@ -344,6 +347,26 @@ export function initializeHoverHandler(): void {
 								value: '**Keyword:** import\n\nImports another circuit file.'
 							}
 						};
+					}
+
+					// Handle default case
+					if (currentLine.trim().startsWith('import')) {
+						// Handle import statements
+						const importMatch = currentLine.match(/import\s+"([^"]+)"/);
+						if (importMatch) {
+							const importPath = importMatch[1];
+							const importedCircuitInfo = circuitInfos?.find(c => path.basename(c.FilePath) === `${importPath}.circuit`);
+							if (importedCircuitInfo) {
+								const inputsStr = importedCircuitInfo.Inputs.map((p: any) => p.BitWidth === 1 ? p.Name : `${p.Name} [${p.BitWidth}]`).join(', ');
+								const outputsStr = importedCircuitInfo.Outputs.map((p: any) => p.BitWidth === 1 ? p.Name : `${p.Name} [${p.BitWidth}]`).join(', ');
+								return {
+									contents: {
+										kind: MarkupKind.Markdown,
+										value: `**Import:** ${importPath}\n\n**Inputs:** ${inputsStr || 'none'}\n\n**Outputs:** ${outputsStr || 'none'}\n\nImports circuit defined in file: ${importedCircuitInfo.FilePath}`
+									}
+								};
+							}
+						}
 					}
 					break;
 			}

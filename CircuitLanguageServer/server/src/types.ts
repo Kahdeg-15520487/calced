@@ -33,6 +33,7 @@ export interface CircuitInfo {
 	Outputs: PortInfo[];
 	FilePath: string;
 	DefinitionLine: number;
+	Level: number;
 	Gates: { [name: string]: GateInfo };
 	LookupTables: { [name: string]: LookupTableInfo };
 	Blocks: { [name: string]: BlockInfo };

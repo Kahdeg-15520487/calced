@@ -2,7 +2,7 @@
   "profiles": {
     "CircuitSimulator": {
       "commandName": "Project",
-      "commandLineArgs": "circuits/4bitadder.circuit --info --base-path=circuits",
+      "commandLineArgs": "circuits/4bitalu.circuit --info --base-path=circuits",
       "workingDirectory": "$(ProjectDir)\\.."
     }
   }

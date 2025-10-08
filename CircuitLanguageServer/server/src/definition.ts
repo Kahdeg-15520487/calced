@@ -1,7 +1,7 @@
 import { TextDocumentPositionParams } from 'vscode-languageserver/node';
 
 import { connection, documents } from './connection';
-import { getCircuitInfo } from './documents';
+import { getCircuitInfo as getCircuitInfos } from './documents';
 import { getWordRangeAtPosition, parseConnectionReference, getBlockInfoAtPosition, findCircuitInfoForGateType } from './utils';
 import { AnnotationInfo } from './annotationInfo';
 import * as url from 'url';
@@ -27,11 +27,14 @@ export function initializeDefinitionHandler(): void {
 			}
 
 			const word = text.substring(wordRange.start, wordRange.end);
+			const lines = text.split('\n');
+			const lineIndex = document.positionAt(offset).line;
+			const currentLine = lines[lineIndex];
 
 			// Get circuit info for the current document
 			const documentPath = url.fileURLToPath(textDocumentPosition.textDocument.uri);
 			const documentDir = path.dirname(documentPath);
-			const circuitInfos = getCircuitInfo(text, documentDir, documentPath);
+			const circuitInfos = getCircuitInfos(text, documentDir, documentPath);
 			const currentCircuit = circuitInfos?.find(c => c.FilePath === documentPath);
 
 			// Check in cached circuit's blocks first
@@ -216,6 +219,25 @@ export function initializeDefinitionHandler(): void {
 					break;
 				default:
 					// Handle default case
+					if (currentLine.trim().startsWith('import')) {
+						// Handle import statements
+						const importMatch = currentLine.match(/import\s+"([^"]+)"/);
+						if (importMatch) {
+							const importPath = importMatch[1];
+							const importedCircuitInfo = circuitInfos?.find(c => path.basename(c.FilePath) === `${importPath}.circuit`);
+							if (importedCircuitInfo) {
+								const defLine = importedCircuitInfo.DefinitionLine - 1;
+								const defCol = "import \"".length; // Position after import "
+								return {
+									uri: url.pathToFileURL(importedCircuitInfo.FilePath).href,
+									range: {
+										start: { line: defLine, character: defCol },
+										end: { line: defLine, character: defCol + importPath.length }
+									}
+								};
+							}
+						}
+					}
 					break;
 			}
 
