@@ -1,0 +1,6 @@
+circuit Mux4to1{
+    inputs {a,b,c,d,sel}
+    outputs {y}
+    gates{}
+    connections{}
+}

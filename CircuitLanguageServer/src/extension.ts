@@ -159,6 +159,20 @@ export function activate(context: ExtensionContext) {
 		vscode.commands.registerCommand('circuit.run', runCircuit)
 	);
 
+	// Register the create file command
+	context.subscriptions.push(
+		vscode.commands.registerCommand('circuit.createFile', async (filePath: string) => {
+			try {
+				const uri = vscode.Uri.file(filePath);
+				await vscode.workspace.fs.writeFile(uri, new Uint8Array());
+				const doc = await vscode.workspace.openTextDocument(uri);
+				await vscode.window.showTextDocument(doc);
+			} catch (error) {
+				vscode.window.showErrorMessage(`Failed to create file: ${error}`);
+			}
+		})
+	);
+
 	// The server is implemented in node
 	const serverModule = context.asAbsolutePath(
 		path.join('out', 'server', 'server.js')

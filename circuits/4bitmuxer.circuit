@@ -1,28 +1,30 @@
+import "mux4to1"
+
 circuit FourBitMuxer{
     inputs { a[4], b[4], c[4], d[4], e[4], f[4], g[4], h[4], sel[3] }
     outputs { y[4] }
     gates{
-        mux0 = Mux(4)
-        mux1 = Mux(4)
-        mux2 = Mux(4)
+        mux0 = Circuit("Mux4to1")
+        mux1 = Circuit("Mux4to1")
+        mux2 = Circuit("Mux4to1")
     }
     connections{
         a -> mux0.in.a
         b -> mux0.in.b
         c -> mux0.in.c
         d -> mux0.in.d
-        sel[1..2] -> mux0.sel
+        sel[1..2] -> mux0.in.sel
 
         e -> mux1.in.a
         f -> mux1.in.b
         g -> mux1.in.c
         h -> mux1.in.d
-        sel[1..2] -> mux1.sel
+        sel[1..2] -> mux1.in.sel
 
-        mux0.out -> mux2.in.a
-        mux1.out -> mux2.in.b
-        sel[0] -> mux2.sel
+        mux0.out.y -> mux2.in.a
+        mux1.out.y -> mux2.in.b
+        sel[0] -> mux2.in.sel
 
-        mux2.out -> y
+        mux2.out.y -> y
     }
 }

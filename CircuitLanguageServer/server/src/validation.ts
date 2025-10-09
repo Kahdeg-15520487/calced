@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as url from 'url';
 
-import { connection } from './connection';
+import { connection, documentDiagnostics } from './connection';
 
 export async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 	const documentPath = url.fileURLToPath(textDocument.uri);
@@ -79,4 +79,7 @@ export async function validateTextDocument(textDocument: TextDocument): Promise<
 
 	// Send the computed diagnostics to VS Code.
 	connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
+
+	// Cache diagnostics for code actions
+	documentDiagnostics.set(textDocument.uri, diagnostics);
 }
