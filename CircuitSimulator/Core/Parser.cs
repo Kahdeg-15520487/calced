@@ -87,11 +87,18 @@ namespace CircuitSimulator.Core
         private void ParseImport(Dictionary<string, Circuit> circuits)
         {
             Consume(TokenType.STRING, "Expected string after 'import'");
-            string filename = Previous().Value+".circuit";
+            string filename = Previous().Value;
+            string name = filename;
+            if (Match(TokenType.IDENTIFIER) && Previous().Value == "as")
+            {
+                Consume(TokenType.IDENTIFIER, "Expected name after 'as'");
+                name = Previous().Value;
+            }
 
             try
             {
                 string importPath = Path.Combine(_basePath, filename);
+                if (!filename.EndsWith(".circuit")) importPath += ".circuit";
                 string importedDsl = File.ReadAllText(importPath);
 
                 var lexer = new Lexer(importedDsl);
@@ -99,10 +106,8 @@ namespace CircuitSimulator.Core
                 var parser = new Parser(tokens, _basePath, importPath, importPath, _level + 1);
                 var importedCircuits = parser.ParseCircuits();
 
-                foreach (var kvp in importedCircuits)
-                {
-                    circuits[kvp.Key] = kvp.Value;
-                }
+                var circuit = importedCircuits.Values.First();
+                circuits[name] = circuit;
             }
             catch (Exception ex)
             {
@@ -558,8 +563,30 @@ namespace CircuitSimulator.Core
                 }
                 else if (parts.Length == 3 && parts[1] == "in")
                 {
-                    // Name syntax: gate.in.name
-                    string inputName = parts[2];
+                    // Name syntax: gate.in.name or gate.in.name[index]
+                    string portSpec = parts[2];
+                    string inputName;
+                    int? portIndex = null;
+                    
+                    if (portSpec.Contains('[') && portSpec.EndsWith(']'))
+                    {
+                        var bracketIndex = portSpec.IndexOf('[');
+                        inputName = portSpec.Substring(0, bracketIndex);
+                        var indexStr = portSpec.Substring(bracketIndex + 1, portSpec.Length - bracketIndex - 2);
+                        if (int.TryParse(indexStr, out int idx))
+                        {
+                            portIndex = idx;
+                        }
+                        else
+                        {
+                            throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Invalid port index: {indexStr}");
+                        }
+                    }
+                    else
+                    {
+                        inputName = portSpec;
+                    }
+                    
                     if (circuit.NamedGates.TryGetValue(parts[0], out targetGate))
                     {
                         if (targetGate is CircuitGate cg)
@@ -577,8 +604,23 @@ namespace CircuitSimulator.Core
                                 flatStart += cg.InputBitWidths[j];
                             }
                             
+                            int namedInputIndex = targetInputIndex; // targetInputIndex is the named index
+                            
+                            if (portIndex.HasValue)
+                            {
+                                if (portIndex.Value >= cg.InputBitWidths[namedInputIndex])
+                                {
+                                    throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Port index {portIndex.Value} out of range for input '{inputName}' (max {cg.InputBitWidths[namedInputIndex] - 1})");
+                                }
+                                targetInputIndex = flatStart + portIndex.Value;
+                            }
+                            else
+                            {
+                                targetInputIndex = flatStart;
+                            }
+                            
                             // Check if this is a multi-bit connection that needs expansion
-                            int targetBitWidth = cg.InputBitWidths[targetInputIndex];
+                            int targetBitWidth = portIndex.HasValue ? 1 : cg.InputBitWidths[namedInputIndex];
                             int sourceBitWidth = 0;
                             
                             // Determine source bit width
@@ -809,10 +851,19 @@ namespace CircuitSimulator.Core
                 }
                 else if (Match(TokenType.DOT))
                 {
-                    // Name syntax: in.name
+                    // Name syntax: in.name or in.name[index]
                     Consume(TokenType.IDENTIFIER, "Expected input name");
                     string name = Previous().Value;
                     target += $".in.{name}";
+                    
+                    // Check for optional [index]
+                    if (Match(TokenType.LBRACKET))
+                    {
+                        Consume(TokenType.NUMBER, "Expected input index");
+                        string index = Previous().Value;
+                        Consume(TokenType.RBRACKET, "Expected ']' after input index");
+                        target += $"[{index}]";
+                    }
                 }
                 else
                 {

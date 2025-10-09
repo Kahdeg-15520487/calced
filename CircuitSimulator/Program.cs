@@ -36,11 +36,11 @@ namespace CircuitSimulator
                 binaryStr = Convert.ToString(decimalValue, 2);
             }
 
-            // Convert binary string to bool array (LSB first)
+            // Convert binary string to bool array (MSB first)
             var bits = new bool[binaryStr.Length];
             for (int i = 0; i < binaryStr.Length; i++)
             {
-                bits[i] = binaryStr[binaryStr.Length - 1 - i] == '1';
+                bits[i] = binaryStr[i] == '1';
             }
 
             return bits;
@@ -91,7 +91,7 @@ namespace CircuitSimulator
             {
                 for (int i = 0; i < bits.Length; i++)
                 {
-                    var bitInputName = $"{inputName}[{i}]";
+                    var bitInputName = $"{inputName}[{expectedBitWidth - 1 - i}]";
                     circuit.ExternalInputs[bitInputName] = bits[i];
                 }
             }
