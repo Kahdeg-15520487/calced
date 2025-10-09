@@ -1,12 +1,12 @@
-import "mux4to1"
+import "4bitmux4to1"
 
 circuit FourBitMuxer{
     inputs { a[4], b[4], c[4], d[4], e[4], f[4], g[4], h[4], sel[3] }
     outputs { y[4] }
     gates{
-        mux0 = Circuit("Mux4to1")
-        mux1 = Circuit("Mux4to1")
-        mux2 = Circuit("Mux4to1")
+        mux0 = Circuit("FourBitMux4to1")
+        mux1 = Circuit("FourBitMux4to1")
+        mux2 = Circuit("FourBitMux4to1")
     }
     connections{
         a -> mux0.in.a

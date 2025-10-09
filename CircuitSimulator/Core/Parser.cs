@@ -441,7 +441,7 @@ namespace CircuitSimulator.Core
                 {
                     if (!circuit.NamedGates.TryGetValue(parts[0], out var gate))
                     {
-                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Source gate '{parts[0]}' not found");
+                        throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Source gate '{parts[0]}' not found");
                     }
 
                     if (parts[1] == "out")
@@ -457,7 +457,7 @@ namespace CircuitSimulator.Core
                             {
                                 if (outputIndex >= cg.Outputs.Count)
                                 {
-                                    throw new DSLInvalidConnectionException($"{source} -> {target}", $"Output index {outputIndex} out of range for gate '{parts[0]}'");
+                                    throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Output index {outputIndex} out of range for gate '{parts[0]}'");
                                 }
                                 var outputGate = new SubcircuitOutputGate(cg, outputIndex);
                                 var outputGateName = $"{parts[0]}_out_{outputIndex}";
@@ -468,7 +468,7 @@ namespace CircuitSimulator.Core
                             {
                                 if (outputIndex >= ltg.Outputs.Count)
                                 {
-                                    throw new DSLInvalidConnectionException($"{source} -> {target}", $"Output index {outputIndex} out of range for gate '{parts[0]}'");
+                                    throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Output index {outputIndex} out of range for gate '{parts[0]}'");
                                 }
                                 var outputGate = new LookupTableOutputGate(ltg, outputIndex);
                                 var outputGateName = $"{parts[0]}_out_{outputIndex}";
@@ -477,24 +477,24 @@ namespace CircuitSimulator.Core
                             }
                             else
                             {
-                                throw new DSLInvalidConnectionException($"{source} -> {target}", $"Gate '{parts[0]}' does not support indexed outputs");
+                                throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Gate '{parts[0]}' does not support indexed outputs");
                             }
                         }
                         else
                         {
-                            throw new DSLInvalidConnectionException($"{source} -> {target}", $"Invalid output index: {indexStr}");
+                            throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Invalid output index: {indexStr}");
                         }
                     }
                     else
                     {
-                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Invalid source format: {source}");
+                        throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Invalid source format: {source}");
                     }
                 }
                 else if (parts.Length == 3 && parts[1] == "out")
                 {
                     if (!circuit.NamedGates.TryGetValue(parts[0], out var gate))
                     {
-                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Source gate '{parts[0]}' not found");
+                        throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Source gate '{parts[0]}' not found");
                     }
 
                     string outputName = parts[2];
@@ -503,7 +503,7 @@ namespace CircuitSimulator.Core
                         int outputIndex = cg.OutputNames.IndexOf(outputName);
                         if (outputIndex == -1)
                         {
-                            throw new DSLInvalidConnectionException($"{source} -> {target}", $"Output name '{outputName}' not found in subcircuit '{parts[0]}'");
+                            throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Output name '{outputName}' not found in subcircuit '{parts[0]}'");
                         }
                         int bitWidth = cg.OutputBitWidths[outputIndex];
                         var outputGate = new SubcircuitOutputGate(cg, outputIndex, bitWidth);
@@ -514,21 +514,21 @@ namespace CircuitSimulator.Core
                     else if (gate is LookupTableGate ltg)
                     {
                         // For lookup tables, we don't have named outputs, so this might not apply
-                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Named outputs not supported for lookup table gate '{parts[0]}'");
+                        throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Named outputs not supported for lookup table gate '{parts[0]}'");
                     }
                     else
                     {
-                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Gate '{parts[0]}' does not support named outputs");
+                        throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Gate '{parts[0]}' does not support named outputs");
                     }
                 }
                 else
                 {
-                    throw new DSLInvalidConnectionException($"{source} -> {target}", $"Invalid source format: {source}");
+                    throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Invalid source format: {source}");
                 }
             }
             else
             {
-                throw new DSLInvalidConnectionException($"{source} -> {target}", $"Unknown source: {source}");
+                throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Unknown source: {source}");
             }
 
             // Parse target
@@ -548,12 +548,12 @@ namespace CircuitSimulator.Core
                         }
                         else
                         {
-                            throw new DSLInvalidConnectionException($"{source} -> {target}", $"Target gate '{parts[0]}' not found");
+                            throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Target gate '{parts[0]}' not found");
                         }
                     }
                     else
                     {
-                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Invalid input index: {indexStr}");
+                        throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Invalid input index: {indexStr}");
                     }
                 }
                 else if (parts.Length == 3 && parts[1] == "in")
@@ -567,7 +567,7 @@ namespace CircuitSimulator.Core
                             targetInputIndex = cg.InputNames.IndexOf(inputName);
                             if (targetInputIndex == -1)
                             {
-                                throw new DSLInvalidConnectionException($"{source} -> {target}", $"Input name '{inputName}' not found in subcircuit '{parts[0]}'");
+                                throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Input name '{inputName}' not found in subcircuit '{parts[0]}'");
                             }
                             
                             // Calculate flat start index for this input
@@ -620,12 +620,12 @@ namespace CircuitSimulator.Core
                         }
                         else
                         {
-                            throw new DSLInvalidConnectionException($"{source} -> {target}", $"Named inputs not supported for non-subcircuit gate '{parts[0]}'");
+                            throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Named inputs not supported for non-subcircuit gate '{parts[0]}'");
                         }
                     }
                     else
                     {
-                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Target gate '{parts[0]}' not found");
+                        throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Target gate '{parts[0]}' not found");
                     }
                 }
                 else if (parts.Length == 2 && parts[1] == "in")
@@ -669,21 +669,21 @@ namespace CircuitSimulator.Core
                         }
                         else if (sourceBitWidth != targetBitWidth)
                         {
-                            throw new DSLInvalidConnectionException($"{source} -> {target}", $"Bitwidth mismatch: {sourceBitWidth} vs {targetBitWidth}");
+                            throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Bitwidth mismatch: {sourceBitWidth} vs {targetBitWidth}");
                         }
                         else
                         {
-                            throw new DSLInvalidConnectionException($"{source} -> {target}", $"Multi-bit connection requires matching bitwidths > 1");
+                            throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Multi-bit connection requires matching bitwidths > 1");
                         }
                     }
                     else
                     {
-                        throw new DSLInvalidConnectionException($"{source} -> {target}", $"Target gate '{parts[0]}' not found");
+                        throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Target gate '{parts[0]}' not found");
                     }
                 }
                 else
                 {
-                    throw new DSLInvalidConnectionException($"{source} -> {target}", $"Invalid target format: {target}");
+                    throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", $"Invalid target format: {target}");
                 }
             }
             else if (circuit.OutputNames.Any(p => p.Name == target && p.BitWidth > 1))
@@ -702,7 +702,7 @@ namespace CircuitSimulator.Core
                 }
                 else
                 {
-                    throw new DSLInvalidConnectionException($"{source} -> {target}", "Source must be a gate with matching output bitwidth");
+                    throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", "Source must be a gate with matching output bitwidth");
                 }
             }
             else if (circuit.ExternalOutputs.ContainsKey(target))
@@ -713,7 +713,7 @@ namespace CircuitSimulator.Core
                 }
                 else
                 {
-                    throw new DSLInvalidConnectionException($"{source} -> {target}", "External outputs must be connected to gate outputs");
+                    throw new DSLInvalidConnectionException(targetLine, targetColumn, $"{source} -> {target}", "External outputs must be connected to gate outputs");
                 }
             }
             else

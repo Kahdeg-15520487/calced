@@ -1,0 +1,40 @@
+circuit OneBitMux4to1{
+    inputs {a,b,c,d,sel[2]}
+    outputs {
+        y
+    }
+    gates{
+        and0 = AND()
+        and1 = AND()
+        and2 = AND()
+        and3 = AND()
+        or0 = OR()
+        or1 = OR()
+        or2 = OR()
+        not0 = NOT()
+        not1 = NOT()
+    }
+    connections{
+        sel[0] -> not0.in[0]
+        sel[1] -> not1.in[0]
+        a -> and0.in[0]
+        not0.out -> and0.in[1]
+        not1.out -> and0.in[2]
+        b -> and1.in[0]
+        sel[0] -> and1.in[1]
+        not1.out -> and1.in[2]
+        c -> and2.in[0]
+        not0.out -> and2.in[1]
+        sel[1] -> and2.in[2]
+        d -> and3.in[0]
+        sel[0] -> and3.in[1]
+        sel[1] -> and3.in[2]
+        and0.out -> or0.in[0]
+        and1.out -> or0.in[1]
+        and2.out -> or1.in[0]
+        and3.out -> or1.in[1]
+        or0.out -> or2.in[0]
+        or1.out -> or2.in[1]
+        or2.out -> y
+    }
+}

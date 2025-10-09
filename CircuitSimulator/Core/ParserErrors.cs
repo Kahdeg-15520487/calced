@@ -50,9 +50,6 @@ namespace CircuitSimulator.Core
 
     public class DSLInvalidConnectionException : DSLParseException
     {
-        public DSLInvalidConnectionException(string connection, string reason)
-            : base($"Invalid connection '{connection}': {reason}") { }
-
         public DSLInvalidConnectionException(int line, int column, string connection, string reason)
             : base(line, column, $"Invalid connection '{connection}': {reason}") { }
     }

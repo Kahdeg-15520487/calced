@@ -48,25 +48,51 @@ namespace CircuitSimulator
 
         static void SetMultiBitInput(Circuit circuit, string inputName, bool[] bits)
         {
-            if (bits.Length == 1 && circuit.ExternalInputs.ContainsKey(inputName))
+            // Determine expected bitwidth
+            int expectedBitWidth = 0;
+            if (circuit.ExternalInputs.ContainsKey(inputName))
             {
                 // Single-bit input
+                expectedBitWidth = 1;
+            }
+            else
+            {
+                // Multi-bit input, count [i]
+                while (circuit.ExternalInputs.ContainsKey($"{inputName}[{expectedBitWidth}]"))
+                {
+                    expectedBitWidth++;
+                }
+            }
+
+            if (expectedBitWidth == 0)
+            {
+                throw new ArgumentException($"Input {inputName} not found in circuit");
+            }
+
+            // Adjust bits to match expected bitwidth by padding left with 0
+            if (bits.Length < expectedBitWidth)
+            {
+                var paddedBits = new bool[expectedBitWidth];
+                bits.CopyTo(paddedBits, 0);
+                // Left padding with false (0) is already done since array is initialized to false
+                bits = paddedBits;
+            }
+            else if (bits.Length > expectedBitWidth)
+            {
+                throw new ArgumentException($"Supplied input bitwidth ({bits.Length}) does not match circuit input bitwidth ({expectedBitWidth})");
+            }
+
+            // Set the inputs
+            if (expectedBitWidth == 1 && circuit.ExternalInputs.ContainsKey(inputName))
+            {
                 circuit.ExternalInputs[inputName] = bits[0];
             }
             else
             {
-                // Multi-bit input
                 for (int i = 0; i < bits.Length; i++)
                 {
                     var bitInputName = $"{inputName}[{i}]";
-                    if (circuit.ExternalInputs.ContainsKey(bitInputName))
-                    {
-                        circuit.ExternalInputs[bitInputName] = bits[i];
-                    }
-                    else
-                    {
-                        throw new ArgumentException($"Input {bitInputName} not found in circuit");
-                    }
+                    circuit.ExternalInputs[bitInputName] = bits[i];
                 }
             }
         }
@@ -684,9 +710,15 @@ namespace CircuitSimulator
                                     var portInfo = circuit.InputNames.FirstOrDefault(p => p.Name == inputName);
                                     if (portInfo != null)
                                     {
-                                        if (bits.Length != portInfo.BitWidth)
+                                        if (bits.Length > portInfo.BitWidth)
                                         {
                                             throw new ArgumentException($"Supplied input bitwidth ({bits.Length}) does not match circuit input bitwidth ({portInfo.BitWidth})");
+                                        }
+                                        if (bits.Length < portInfo.BitWidth)
+                                        {
+                                            var padded = new bool[portInfo.BitWidth];
+                                            bits.CopyTo(padded, portInfo.BitWidth - bits.Length);
+                                            bits = padded;
                                         }
                                         SetMultiBitInput(circuit, inputName, bits);
                                     }
